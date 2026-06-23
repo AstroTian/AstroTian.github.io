@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Visualizing Each Snake · Tianwen Group · HDU</title>
+
+    <!-- Bootstrap 4 + Font Awesome + Google Fonts -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.12.1/css/all.min.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800;900&display=swap" rel="stylesheet" />
+
+    <style>
+        /* ----- 全局重置 & 渐变背景 ----- */
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #f9f3ff 0%, #e6f0fa 100%);
+            min-height: 100vh;
+            padding: 2rem 1.5rem;
+            margin: 0;
+        }
+
+        /* 主卡片 – 宽屏设计 */
+        .main-card {
+            max-width: 1400px;
+            width: 95%;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.78);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-radius: 3rem;
+            box-shadow: 0 30px 70px rgba(60, 30, 120, 0.10), 0 10px 30px rgba(0, 20, 40, 0.04);
+            padding: 3rem 3.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            transition: all 0.2s;
+            overflow: hidden;
+        }
+
+        @media (max-width: 992px) {
+            .main-card {
+                padding: 2.5rem 2rem;
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 600px) {
+            .main-card {
+                padding: 2rem 1.5rem;
+                border-radius: 2rem;
+                width: 100%;
+            }
+        }
+
+        /* ----- 头部 ----- */
+        .header-title {
+            font-weight: 900;
+            font-size: 2.8rem;
+            letter-spacing: -0.03em;
+            background: linear-gradient(135deg, #6c2bd9, #3a7bd5);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.1rem;
+        }
+        .header-title i {
+            background: none;
+            -webkit-text-fill-color: #6c2bd9;
+            margin-right: 0.3rem;
+        }
+        .header-sub {
+            font-size: 1.2rem;
+            font-weight: 400;
+            color: #4a5f7a;
+            border-bottom: 2px solid rgba(108, 43, 217, 0.15);
+            padding-bottom: 0.8rem;
+            margin-bottom: 1.5rem;
+        }
+        .header-sub i {
+            color: #6c2bd9;
+            margin-right: 0.4rem;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+            margin-left: 1rem;
+            gap: 0.5rem;
+        }
+        .deco-dots {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        .deco-dots span {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+        .deco-dots .label-text {
+            font-size: 0.85rem;
+            color: #4a5f7a;
+            white-space: nowrap;
+            margin-left: 0.2rem;
+        }
+        .dot1 { background: #6c2bd9; }
+        .dot2 { background: #3a7bd5; }
+        .dot3 { background: #f9a826; }
+
+        @media (max-width: 576px) {
+            .header-title {
+                font-size: 2.0rem;
+            }
+            .header-sub {
+                font-size: 1rem;
+            }
+            .header-right {
+                margin-left: 0.5rem;
+                gap: 0.3rem;
+            }
+            .deco-dots span {
+                width: 8px;
+                height: 8px;
+            }
+            .deco-dots .label-text {
+                font-size: 0.7rem;
+            }
+        }
+
+        @media (max-width: 400px) {
+            .header-right {
+                flex-wrap: wrap;
+                justify-content: flex-end;
+            }
+        }
+
+        /* ----- 简介卡片 ----- */
+        .intro-text {
+            font-size: 1.05rem;
+            line-height: 1.7;
+            color: #1e2f3f;
+            background: linear-gradient(135deg, rgba(108, 43, 217, 0.04), rgba(58, 123, 213, 0.04));
+            padding: 1.4rem 1.8rem;
+            border-radius: 1.8rem;
+            border-left: 6px solid #6c2bd9;
+            margin-bottom: 2.2rem;
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.8);
+        }
+        .intro-text .highlight {
+            font-weight: 700;
+            color: #6c2bd9;
+        }
+
+        /* ----- 统计信息 ----- */
+        .stats-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1.5rem 3rem;
+            background: rgba(255, 255, 255, 0.4);
+            border-radius: 1.2rem;
+            padding: 1rem 2rem;
+            margin-bottom: 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            justify-content: center;
+        }
+        .stats-bar .stat-item {
+            text-align: center;
+        }
+        .stats-bar .stat-number {
+            font-size: 1.6rem;
+            font-weight: 800;
+            color: #1a1a3a;
+            line-height: 1.2;
+        }
+        .stats-bar .stat-label {
+            font-size: 0.85rem;
+            color: #4a5f7a;
+            font-weight: 500;
+        }
+
+        /* ----- 分割线 ----- */
+        .section-divider {
+            margin: 2.5rem 0;
+            border: 0;
+            height: 2px;
+            background: linear-gradient(90deg, #6c2bd9, #3a7bd5, #f9a826);
+            opacity: 0.3;
+        }
+
+        /* ----- 编号网格 ----- */
+        .snake-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+            gap: 0.8rem;
+            margin: 1.5rem 0;
+        }
+        .snake-grid .snake-card {
+            background: rgba(255, 255, 255, 0.5);
+            border-radius: 0.8rem;
+            padding: 0.6rem 0.2rem;
+            text-align: center;
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            transition: all 0.25s ease;
+            cursor: pointer;
+            text-decoration: none;
+            color: #1a1a3a;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+        .snake-grid .snake-card:hover {
+            transform: translateY(-4px) scale(1.02);
+            background: rgba(255, 255, 255, 0.85);
+            border-color: #6c2bd9;
+            box-shadow: 0 8px 24px rgba(108, 43, 217, 0.12);
+            color: #6c2bd9;
+        }
+        .snake-grid .snake-card .badge-id {
+            display: block;
+            font-size: 0.7rem;
+            color: #6a8aaa;
+            font-weight: 400;
+            margin-top: 0.1rem;
+        }
+
+        /* ----- 分页控件 ----- */
+        .pagination-wrapper {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin: 2rem 0 1rem;
+        }
+        .pagination-wrapper .page-btn {
+            background: rgba(255, 255, 255, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            border-radius: 0.6rem;
+            padding: 0.4rem 0.9rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #1a1a3a;
+            cursor: pointer;
+            transition: all 0.2s;
+            min-width: 40px;
+            text-align: center;
+        }
+        .pagination-wrapper .page-btn:hover {
+            background: rgba(255, 255, 255, 0.85);
+            border-color: #6c2bd9;
+            color: #6c2bd9;
+        }
+        .pagination-wrapper .page-btn.active {
+            background: #6c2bd9;
+            border-color: #6c2bd9;
+            color: #fff;
+        }
+        .pagination-wrapper .page-btn.disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            pointer-events: none;
+        }
+        .pagination-wrapper .page-info {
+            font-size: 0.85rem;
+            color: #4a5f7a;
+            padding: 0 0.5rem;
+            font-weight: 500;
+        }
+
+        /* ----- 快速跳转 ----- */
+        .jump-box {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            margin: 0.5rem 0 1.5rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .jump-box label {
+            font-size: 0.85rem;
+            color: #4a5f7a;
+            font-weight: 500;
+        }
+        .jump-box input {
+            width: 80px;
+            padding: 0.3rem 0.6rem;
+            border-radius: 0.6rem;
+            border: 1px solid rgba(108, 43, 217, 0.2);
+            background: rgba(255, 255, 255, 0.6);
+            font-size: 0.85rem;
+            text-align: center;
+            font-weight: 600;
+        }
+        .jump-box input:focus {
+            outline: none;
+            border-color: #6c2bd9;
+            box-shadow: 0 0 0 3px rgba(108, 43, 217, 0.1);
+        }
+        .jump-box .go-btn {
+            background: #6c2bd9;
+            color: #fff;
+            border: none;
+            border-radius: 0.6rem;
+            padding: 0.3rem 1rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .jump-box .go-btn:hover {
+            background: #5a1fb8;
+        }
+
+        /* ----- 页脚 ----- */
+        .footer-note {
+            margin-top: 2.5rem;
+            padding-top: 1.2rem;
+            border-top: 2px solid rgba(108, 43, 217, 0.08);
+            font-size: 0.9rem;
+            color: #4a5f7a;
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        .footer-note a {
+            color: #6c2bd9;
+            text-decoration: none;
+            font-weight: 500;
+            border-bottom: 1px dotted rgba(108, 43, 217, 0.2);
+            transition: border-color 0.2s;
+        }
+        .footer-note a:hover {
+            border-bottom-color: #6c2bd9;
+        }
+
+        /* 小屏调整 */
+        @media (max-width: 576px) {
+            .intro-text {
+                font-size: 0.95rem;
+                padding: 1rem 1.2rem;
+            }
+            .stats-bar {
+                padding: 0.8rem 1rem;
+                gap: 1rem;
+            }
+            .stats-bar .stat-number {
+                font-size: 1.2rem;
+            }
+            .snake-grid {
+                grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+                gap: 0.5rem;
+            }
+            .snake-grid .snake-card {
+                font-size: 0.7rem;
+                padding: 0.4rem 0.1rem;
+            }
+            .pagination-wrapper .page-btn {
+                padding: 0.3rem 0.6rem;
+                font-size: 0.75rem;
+                min-width: 32px;
+            }
+        }
+
+        /* 宽屏下额外优化 */
+        @media (min-width: 1200px) {
+            .snake-grid {
+                grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="main-card">
+
+    <!-- ====== HEADER ====== -->
+    <div class="d-flex flex-wrap align-items-center justify-content-between">
+        <div style="flex:1; min-width:200px;">
+            <div class="header-title">
+                <i class="fas fa-chart-simple"></i> Visualizing Each Snake
+            </div>
+            <div class="header-sub">
+                <i class="fas fa-snake"></i> Interactive visualization index for 1,192 Stellar Snake candidates
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="deco-dots">
+                <span class="dot1"></span>
+                <span class="dot2"></span>
+                <span class="dot3"></span>
+                <span class="label-text"><a href="index.html">Home</a></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ====== INTRO ====== -->
+    <div class="intro-text">
+        This page provides <span class="highlight">visualization entry points</span> for each of the
+        <strong>1,192 Stellar Snake candidates</strong> identified in <em>The Stellar “Snake”-V</em> (Yang et al. 2026).
+        Each snake is accessible via its unique ID, with dedicated visualization pages located at
+        <code class="highlight">ID/ID.html</code> (e.g., <code>0/0.html</code>).
+        Browse through the pages below or jump directly to a specific ID.
+    </div>
+
+    <!-- ====== STATS ====== -->
+    <div class="stats-bar">
+        <div class="stat-item">
+            <div class="stat-number">1,192</div>
+            <div class="stat-label">Total Snakes</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number" id="perPageDisplay">50</div>
+            <div class="stat-label">Per Page</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number" id="totalPagesDisplay">24</div>
+            <div class="stat-label">Total Pages</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number" id="currentPageDisplay">1</div>
+            <div class="stat-label">Current Page</div>
+        </div>
+    </div>
+
+    <!-- ====== JUMP BOX ====== -->
+    <div class="jump-box">
+        <label for="jumpInput"><i class="fas fa-arrow-right"></i> Jump to ID:</label>
+        <input type="number" id="jumpInput" min="0" max="1191" placeholder="0–1191" />
+        <button class="go-btn" id="jumpBtn">Go</button>
+        <span style="font-size:0.75rem; color:#6a8aaa; margin-left:0.2rem;">(enter 0–1191)</span>
+    </div>
+
+    <!-- ====== SNAKE GRID ====== -->
+    <div id="snakeGridContainer">
+        <!-- 由 JavaScript 动态生成 -->
+    </div>
+
+    <!-- ====== PAGINATION ====== -->
+    <div class="pagination-wrapper" id="pagination">
+        <!-- 由 JavaScript 动态生成 -->
+    </div>
+
+    <!-- ====== FOOTER ====== -->
+    <div class="footer-note">
+        <span>
+            <i class="fas fa-arrow-left"></i>
+            <a href="snake.html">Back to Stellar Snake Series</a>
+        </span>
+        <span>
+            <i class="fas fa-envelope"></i>
+            <a href="mailto:hjtian@hdu.edu.cn">hjtian@hdu.edu.cn</a>
+        </span>
+        <span style="font-size:0.8rem; color:#6a8aaa;">
+            <i class="fas fa-snake" style="color:#6c2bd9;"></i> © 2026 Tianwen Group · HDU
+        </span>
+    </div>
+
+</div>
+
+<script>
+    (function() {
+        // ---------- 配置 ----------
+        const TOTAL_SNAKES = 1192;          // 0 到 1191
+        const PER_PAGE = 50;
+        const TOTAL_PAGES = Math.ceil(TOTAL_SNAKES / PER_PAGE);
+
+        // DOM 引用
+        const gridContainer = document.getElementById('snakeGridContainer');
+        const paginationEl = document.getElementById('pagination');
+        const currentPageDisplay = document.getElementById('currentPageDisplay');
+        const totalPagesDisplay = document.getElementById('totalPagesDisplay');
+        const perPageDisplay = document.getElementById('perPageDisplay');
+        const jumpInput = document.getElementById('jumpInput');
+        const jumpBtn = document.getElementById('jumpBtn');
+
+        // 显示每页数量
+        perPageDisplay.textContent = PER_PAGE;
+        totalPagesDisplay.textContent = TOTAL_PAGES;
+
+        // 当前页码（从 0 开始）
+        let currentPage = 0;
+
+        // ---------- 渲染函数 ----------
+        function renderPage(page) {
+            // 边界检查
+            if (page < 0) page = 0;
+            if (page >= TOTAL_PAGES) page = TOTAL_PAGES - 1;
+            currentPage = page;
+
+            // 计算本页的 ID 范围
+            const start = page * PER_PAGE;
+            const end = Math.min(start + PER_PAGE, TOTAL_SNAKES);
+
+            // 更新当前页显示
+            currentPageDisplay.textContent = page + 1;
+
+            // 构建网格
+            let html = '<div class="snake-grid">';
+            for (let id = start; id < end; id++) {
+                // 每个 snake 的链接为 id/id.html
+                const linkPath = id + '/' + id + '.html';
+                html += `
+                    <a href="${linkPath}" class="snake-card" title="Snake ${id}">
+                        ${id}
+                        <span class="badge-id">#${id}</span>
+                    </a>
+                `;
+            }
+            html += '</div>';
+            gridContainer.innerHTML = html;
+
+            // 更新分页控件
+            renderPagination(page);
+        }
+
+        // ---------- 分页控件 ----------
+        function renderPagination(activePage) {
+            let html = '';
+
+            // 上一页
+            html += `<button class="page-btn ${activePage === 0 ? 'disabled' : ''}" data-page="${activePage - 1}">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>`;
+
+            // 页码按钮（显示当前页前后各 2 页，以及首尾）
+            const delta = 2;
+            let pages = [];
+
+            // 总是显示第一页
+            pages.push(0);
+
+            // 计算中间页范围
+            let startPage = Math.max(1, activePage - delta);
+            let endPage = Math.min(TOTAL_PAGES - 2, activePage + delta);
+
+            // 如果第一页和中间页之间有间隙，加省略号
+            if (startPage > 1) {
+                // 但如果在第 3 页，显示第 2 页而不显示省略号
+                if (startPage > 2) {
+                    pages.push('...');
+                } else {
+                    pages.push(1);
+                }
+            }
+
+            for (let p = startPage; p <= endPage; p++) {
+                pages.push(p);
+            }
+
+            // 如果最后一页和中间页之间有间隙
+            if (endPage < TOTAL_PAGES - 2) {
+                if (endPage < TOTAL_PAGES - 3) {
+                    pages.push('...');
+                } else {
+                    pages.push(TOTAL_PAGES - 2);
+                }
+            }
+
+            // 总是显示最后一页（如果不止一页）
+            if (TOTAL_PAGES > 1) {
+                pages.push(TOTAL_PAGES - 1);
+            }
+
+            // 去重
+            const uniquePages = [];
+            let lastWasEllipsis = false;
+            for (const p of pages) {
+                if (p === '...') {
+                    if (!lastWasEllipsis) {
+                        uniquePages.push(p);
+                        lastWasEllipsis = true;
+                    }
+                } else {
+                    uniquePages.push(p);
+                    lastWasEllipsis = false;
+                }
+            }
+
+            for (const p of uniquePages) {
+                if (p === '...') {
+                    html += `<span class="page-btn" style="cursor:default; background:transparent; border:none;">…</span>`;
+                } else {
+                    const isActive = (p === activePage);
+                    html += `<button class="page-btn ${isActive ? 'active' : ''}" data-page="${p}">${p + 1}</button>`;
+                }
+            }
+
+            // 下一页
+            html += `<button class="page-btn ${activePage === TOTAL_PAGES - 1 ? 'disabled' : ''}" data-page="${activePage + 1}">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>`;
+
+            paginationEl.innerHTML = html;
+
+            // 绑定点击事件
+            paginationEl.querySelectorAll('.page-btn[data-page]').forEach(btn => {
+                btn.addEventListener('click', function(e) {
+                    const page = parseInt(this.dataset.page, 10);
+                    if (!isNaN(page) && page >= 0 && page < TOTAL_PAGES) {
+                        renderPage(page);
+                        // 滚动到网格顶部
+                        gridContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                });
+            });
+        }
+
+        // ---------- 跳转功能 ----------
+        function jumpToId(id) {
+            if (isNaN(id) || id < 0 || id >= TOTAL_SNAKES) {
+                alert(`Please enter a valid ID between 0 and ${TOTAL_SNAKES - 1}.`);
+                return;
+            }
+            const targetPage = Math.floor(id / PER_PAGE);
+            renderPage(targetPage);
+            // 滚动到网格
+            gridContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            // 清空输入框
+            jumpInput.value = '';
+        }
+
+        jumpBtn.addEventListener('click', function() {
+            const val = parseInt(jumpInput.value, 10);
+            jumpToId(val);
+        });
+
+        jumpInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                const val = parseInt(this.value, 10);
+                jumpToId(val);
+            }
+        });
+
+        // ---------- 键盘快捷键 ----------
+        document.addEventListener('keydown', function(e) {
+            // Ctrl+左/右 翻页
+            if (e.ctrlKey && e.key === 'ArrowLeft') {
+                e.preventDefault();
+                if (currentPage > 0) renderPage(currentPage - 1);
+            } else if (e.ctrlKey && e.key === 'ArrowRight') {
+                e.preventDefault();
+                if (currentPage < TOTAL_PAGES - 1) renderPage(currentPage + 1);
+            }
+        });
+
+        // ---------- 初始渲染 ----------
+        renderPage(0);
+
+        // ---------- 小提示：在控制台显示帮助 ----------
+        console.log('📊 Visualizing Each Snake — 快捷键: Ctrl+← / Ctrl+→ 翻页');
+        console.log(`📌 共 ${TOTAL_SNAKES} 个 Snake，每页 ${PER_PAGE} 个，共 ${TOTAL_PAGES} 页`);
+
+    })();
+</script>
+
+<!-- Bootstrap JS (optional) -->
+<script src="https://code.jquery.com/jquery-3.4.1.slim.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js"></script>
+
+</body>
+</html>
