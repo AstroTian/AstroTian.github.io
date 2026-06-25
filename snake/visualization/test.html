@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>Snake Spatial Distribution · Tianwen Group · HDU</title>
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.12.1/css/all.min.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800;900&display=swap" rel="stylesheet" />
+    <!-- D3.js v7 -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+
+    <style>
+        /* ----- 全局重置 & 渐变背景 ----- */
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #f9f3ff 0%, #e6f0fa 100%);
+            min-height: 100vh;
+            padding: 2rem 1.5rem;
+            margin: 0;
+        }
+
+        /* 主卡片 – 宽屏设计 */
+        .main-card {
+            max-width: 1400px;
+            width: 95%;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.78);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-radius: 3rem;
+            box-shadow: 0 30px 70px rgba(60, 30, 120, 0.10), 0 10px 30px rgba(0, 20, 40, 0.04);
+            padding: 3rem 3.5rem;
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            transition: all 0.2s;
+            overflow: hidden;
+        }
+
+        @media (max-width: 992px) {
+            .main-card {
+                padding: 2.5rem 2rem;
+                width: 100%;
+            }
+        }
+
+        @media (max-width: 600px) {
+            .main-card {
+                padding: 2rem 1.5rem;
+                border-radius: 2rem;
+                width: 100%;
+            }
+        }
+
+        /* ----- 头部 ----- */
+        .header-title {
+            font-weight: 900;
+            font-size: 2.8rem;
+            letter-spacing: -0.03em;
+            background: linear-gradient(135deg, #6c2bd9, #3a7bd5);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.1rem;
+        }
+        .header-title i {
+            background: none;
+            -webkit-text-fill-color: #6c2bd9;
+            margin-right: 0.3rem;
+        }
+        .header-sub {
+            font-size: 1.2rem;
+            font-weight: 400;
+            color: #4a5f7a;
+            border-bottom: 2px solid rgba(108, 43, 217, 0.15);
+            padding-bottom: 0.8rem;
+            margin-bottom: 1.5rem;
+        }
+        .header-sub i {
+            color: #6c2bd9;
+            margin-right: 0.4rem;
+        }
+
+        /* 右上角：三个点 + Home 垂直排列，与标题同行 */
+        .header-right {
+            display: flex;
+            align-items: center;
+            flex-shrink: 0;
+            margin-left: 1rem;
+            padding-left: 0.5rem;
+        }
+
+        .deco-dots {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.4rem;
+            flex-shrink: 0;
+        }
+        .deco-dots .dots-row {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+        .deco-dots span {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+        .deco-dots .label-text {
+            font-size: 0.8rem;
+            color: #4a5f7a;
+            text-align: center;
+            line-height: 1.3;
+        }
+        .deco-dots .label-text a {
+            color: #4a5f7a;
+            text-decoration: none;
+            border-bottom: 1px dotted rgba(108, 43, 217, 0.25);
+            transition: border-color 0.2s, color 0.2s;
+            font-weight: 500;
+        }
+        .deco-dots .label-text a:hover {
+            color: #6c2bd9;
+            border-bottom-color: #6c2bd9;
+        }
+        .dot1 { background: #6c2bd9; }
+        .dot2 { background: #3a7bd5; }
+        .dot3 { background: #f9a826; }
+
+        @media (max-width: 700px) {
+            .header-right {
+                margin-left: 0.5rem;
+            }
+            .deco-dots {
+                flex-direction: row;
+                gap: 0.3rem;
+                align-items: center;
+            }
+            .deco-dots .dots-row {
+                gap: 0.3rem;
+            }
+            .deco-dots .label-text {
+                font-size: 0.7rem;
+                margin-left: 0.2rem;
+            }
+            .header-title {
+                font-size: 2.0rem;
+            }
+            .header-sub {
+                font-size: 1rem;
+            }
+        }
+        @media (max-width: 400px) {
+            .header-title { font-size: 1.6rem; }
+            .deco-dots span { width: 8px; height: 8px; }
+        }
+
+        /* ----- 简介卡片 ----- */
+        .intro-text {
+            font-size: 1.05rem;
+            line-height: 1.7;
+            color: #1e2f3f;
+            background: linear-gradient(135deg, rgba(108, 43, 217, 0.04), rgba(58, 123, 213, 0.04));
+            padding: 1.2rem 1.8rem;
+            border-radius: 1.8rem;
+            border-left: 6px solid #6c2bd9;
+            margin-bottom: 1.8rem;
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.8);
+        }
+        .intro-text .highlight {
+            font-weight: 700;
+            color: #6c2bd9;
+        }
+
+        /* ----- 统计信息 ----- */
+        .stats-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1.5rem 3rem;
+            background: rgba(255, 255, 255, 0.4);
+            border-radius: 1.2rem;
+            padding: 0.7rem 2rem;
+            margin-bottom: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            justify-content: center;
+        }
+        .stats-bar .stat-item {
+            text-align: center;
+        }
+        .stats-bar .stat-number {
+            font-size: 1.4rem;
+            font-weight: 800;
+            color: #1a1a3a;
+            line-height: 1.2;
+        }
+        .stats-bar .stat-label {
+            font-size: 0.8rem;
+            color: #4a5f7a;
+            font-weight: 500;
+        }
+
+        /* ----- 筛选下拉菜单 ----- */
+        .filter-bar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 1rem 2rem;
+            background: rgba(255, 255, 255, 0.35);
+            border-radius: 1.2rem;
+            padding: 0.6rem 1.8rem;
+            margin-bottom: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            justify-content: center;
+        }
+        .filter-bar label {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #2c1a4a;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .filter-bar select {
+            padding: 0.35rem 1.2rem 0.35rem 0.8rem;
+            border-radius: 0.8rem;
+            border: 1px solid rgba(108, 43, 217, 0.2);
+            background: rgba(255, 255, 255, 0.7);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: #1a1a3a;
+            cursor: pointer;
+            outline: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236c2bd9' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 0.6rem center;
+            min-width: 140px;
+        }
+        .filter-bar select:hover {
+            border-color: #6c2bd9;
+            background-color: rgba(255, 255, 255, 0.9);
+        }
+        .filter-bar select:focus {
+            border-color: #6c2bd9;
+            box-shadow: 0 0 0 3px rgba(108, 43, 217, 0.1);
+        }
+        .filter-bar .filter-info {
+            font-size: 0.85rem;
+            color: #4a5f7a;
+            font-weight: 400;
+        }
+        .filter-bar .filter-info strong {
+            color: #1a1a3a;
+        }
+
+        /* ----- 图表容器 ----- */
+        .chart-container {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.25);
+            border-radius: 1.5rem;
+            padding: 0.8rem;
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            position: relative;
+            margin-top: 0.5rem;
+        }
+        .chart-container svg {
+            display: block;
+            width: 100%;
+            height: auto;
+            background: transparent;
+            border-radius: 1rem;
+        }
+
+        /* Tooltip */
+        .tooltip-snake {
+            position: fixed;
+            background: rgba(26, 26, 58, 0.94);
+            backdrop-filter: blur(8px);
+            color: #fff;
+            padding: 0.6rem 1rem;
+            border-radius: 0.8rem;
+            font-size: 0.85rem;
+            font-weight: 500;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            z-index: 1000;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.08);
+            line-height: 1.6;
+            max-width: 280px;
+        }
+        .tooltip-snake.visible { opacity: 1; }
+        .tooltip-snake .tt-label { color: #b8a0d0; font-weight: 400; }
+        .tooltip-snake .tt-value { color: #fff; font-weight: 600; }
+        .tooltip-snake .tt-highlight { color: #f9a826; }
+
+        /* 图例外层 */
+        .legend-wrapper {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 1rem 2.5rem;
+            padding: 0.5rem 1.2rem;
+            margin: 0.3rem 0 0.3rem 0;
+            background: rgba(255, 255, 255, 0.25);
+            border-radius: 1rem;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            justify-content: center;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 0.8rem;
+            color: #2a3f5a;
+        }
+        .legend-dot { border-radius: 50%; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.04); }
+        .legend-label { font-weight: 500; }
+
+        .hint-text {
+            font-size: 0.8rem;
+            color: #6a8aaa;
+            text-align: center;
+            margin-top: 0.2rem;
+            font-weight: 400;
+        }
+        .hint-text i { color: #6c2bd9; }
+
+        .snake-link { cursor: pointer; }
+        .snake-link circle {
+            transition: stroke-width 0.2s, filter 0.2s;
+            cursor: pointer;
+        }
+        .snake-link:hover circle {
+            stroke-width: 2.5;
+            stroke: #1a1a3a;
+            filter: drop-shadow(0 0 10px rgba(108, 43, 217, 0.35));
+        }
+        .snake-label {
+            pointer-events: none;
+            user-select: none;
+            font-weight: 700;
+            text-anchor: middle;
+            dominant-baseline: central;
+            text-shadow: 0 0 6px rgba(0,0,0,0.6), 0 0 12px rgba(0,0,0,0.3);
+        }
+
+        /* 页脚 */
+        .footer-note {
+            margin-top: 2rem;
+            padding-top: 1rem;
+            border-top: 2px solid rgba(108, 43, 217, 0.08);
+            font-size: 0.9rem;
+            color: #4a5f7a;
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+        .footer-note a {
+            color: #6c2bd9;
+            text-decoration: none;
+            font-weight: 500;
+            border-bottom: 1px dotted rgba(108, 43, 217, 0.2);
+            transition: border-color 0.2s;
+        }
+        .footer-note a:hover { border-bottom-color: #6c2bd9; }
+
+        /* 小屏调整 */
+        @media (max-width: 576px) {
+            .intro-text { font-size: 0.95rem; padding: 1rem 1.2rem; }
+            .stats-bar { padding: 0.5rem 1rem; gap: 0.8rem; }
+            .stats-bar .stat-number { font-size: 1.1rem; }
+            .filter-bar { padding: 0.4rem 1rem; gap: 0.6rem; }
+            .filter-bar select { min-width: 110px; font-size: 0.8rem; }
+            .filter-bar label { font-size: 0.8rem; }
+        }
+
+        /* 空状态 */
+        .no-data-msg {
+            text-align: center;
+            padding: 2rem;
+            color: #4a5f7a;
+            font-size: 1.1rem;
+            font-weight: 500;
+        }
+        .no-data-msg i { color: #6c2bd9; font-size: 2rem; display: block; margin-bottom: 0.5rem; }
+    </style>
+</head>
+<body>
+
+<div class="main-card">
+
+    <!-- ====== HEADER ====== -->
+    <div class="d-flex flex-wrap align-items-center justify-content-between" style="flex-wrap: nowrap;">
+        <div style="flex:1; min-width:0; margin-right:1rem;">
+            <div class="header-title">
+                <i class="fas fa-chart-simple"></i> Snake Spatial Distribution
+            </div>
+            <div class="header-sub">
+                <i class="fas fa-snake"></i> <span id="totalSnakesHeader">Loading...</span> Stellar Snake candidates · Color-coded by age
+            </div>
+        </div>
+        <div class="header-right">
+            <div class="deco-dots">
+                <div class="dots-row">
+                    <span class="dot1"></span>
+                    <span class="dot2"></span>
+                    <span class="dot3"></span>
+                </div>
+                <span class="label-text"><a href="/">Home</a></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ====== INTRO ====== -->
+    <div class="intro-text">
+        <span class="highlight">Stellar Snake</span> candidates identified in <em>The Stellar “Snake”-V</em> (Yang et al. 2026).
+        Color indicates <span class="highlight">log<sub>10</sub>(age/yr)</span> — <span style="color:#1a6fb5;">bluer</span> for younger,
+        <span style="color:#b51a1a;">redder</span> for older. Point size scales with <span class="highlight">N<sub>node</sub></span>.
+        Click any point to view its dedicated page.
+    </div>
+
+    <!-- ====== STATS ====== -->
+    <div class="stats-bar" id="statsBar">
+        <div class="stat-item">
+            <div class="stat-number" id="totalSnakes">—</div>
+            <div class="stat-label">Total Snakes</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number" id="totalNodes">—</div>
+            <div class="stat-label">Total Nodes</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number" id="ageRange">—</div>
+            <div class="stat-label">Age Range (log)</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number" id="avgNodes">—</div>
+            <div class="stat-label">Avg Nodes / Snake</div>
+        </div>
+        <div class="stat-item" id="filteredCount" style="display:none;">
+            <div class="stat-number" id="filteredN">—</div>
+            <div class="stat-label">Filtered Snakes</div>
+        </div>
+    </div>
+
+    <!-- ====== FILTER ====== -->
+    <div class="filter-bar">
+        <label><i class="fas fa-filter" style="color:#6c2bd9;"></i> Age Range:</label>
+        <select id="ageFilter">
+            <option value="all">All Snakes</option>
+            <option value="young">&lt; 7.0 (Young)</option>
+            <option value="7.0-7.4">7.0 – 7.4</option>
+            <option value="7.4-7.8">7.4 – 7.8</option>
+            <option value="7.8-8.2">7.8 – 8.2</option>
+            <option value="8.2-8.6">8.2 – 8.6</option>
+            <option value="8.6-9.0">8.6 – 9.0</option>
+            <option value="9.0-9.4">9.0 – 9.4</option>
+            <option value="old">≥ 9.4 (Old)</option>
+        </select>
+        <span class="filter-info" id="filterInfo">Loading data...</span>
+    </div>
+
+    <!-- ====== CHART ====== -->
+    <div class="chart-container" id="chartContainer">
+        <div id="d3Chart"></div>
+    </div>
+
+    <!-- ====== LEGEND ====== -->
+    <div class="legend-wrapper" id="legendWrapper">
+        <div class="legend-item">
+            <span style="font-weight:600; color:#1a1a3a;">Age:</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-dot" style="width:14px; height:14px; background:#1a6fb5;"></span>
+            <span>young</span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-dot" style="width:14px; height:14px; background:#3b9abe;"></span>
+            <span></span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-dot" style="width:14px; height:14px; background:#f9a826;"></span>
+            <span></span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-dot" style="width:14px; height:14px; background:#d95f2b;"></span>
+            <span></span>
+        </div>
+        <div class="legend-item">
+            <span class="legend-dot" style="width:14px; height:14px; background:#b51a1a;"></span>
+            <span>old</span>
+        </div>
+        <div class="legend-item" style="color:#6a8aaa; font-size:0.75rem; margin-left:0.5rem;">
+            <i class="fas fa-mouse-pointer"></i> Hover · Click
+        </div>
+        <div class="legend-item" style="margin-left:0.5rem;">
+            <span style="font-weight:500; color:#1a1a3a;">N<sub>node</sub>:</span>
+            <span class="legend-dot" style="width:6px; height:6px; background:#6c2bd9;"></span>
+            <span>small</span>
+            <span class="legend-dot" style="width:10px; height:10px; background:#6c2bd9; margin-left:0.3rem;"></span>
+            <span>med</span>
+            <span class="legend-dot" style="width:16px; height:16px; background:#6c2bd9; margin-left:0.3rem;"></span>
+            <span>large</span>
+        </div>
+    </div>
+
+    <div class="hint-text">
+        <i class="fas fa-info-circle"></i> Use the dropdown above to filter by age. Hover for details, click to open Snake page.
+    </div>
+
+    <!-- ====== FOOTER ====== -->
+    <div class="footer-note">
+        <span><i class="fas fa-arrow-left"></i> <a href="/snake/">Back to Stellar Snake Series</a></span>
+        <span><i class="fas fa-envelope"></i> <a href="mailto:hjtian@hdu.edu.cn">hjtian@hdu.edu.cn</a></span>
+        <span style="font-size:0.8rem; color:#6a8aaa;">
+            <i class="fas fa-snake" style="color:#6c2bd9;"></i>
+            <a href="/" style="color:#6a8aaa; text-decoration:none; border-bottom:1px dotted rgba(108,43,217,0.2);">© 2026 Tianwen Group · HDU</a>
+        </span>
+    </div>
+
+</div>
+
+<!-- Tooltip -->
+<div class="tooltip-snake" id="tooltip"></div>
+
+<script>
+// =====================================================================
+// 使用 D3 加载同目录下的 snake_s.csv 文件
+// 数据列顺序: Snake, Nstar, Nnode, l_median, b_median, Loga_part_p50
+// =====================================================================
+d3.csv("snake_s.csv").then(function(csvData) {
+    // 解析数据
+    const rawData = csvData.map(d => ({
+        snake: +d.Snake,
+        nstar: +d.Nstar,
+        nnode: +d.Nnode,
+        l: +d.l_median,
+        b: +d.b_median,
+        age: +d.Loga_part_p50
+    })).filter(d => !isNaN(d.snake) && !isNaN(d.age) && !isNaN(d.l) && !isNaN(d.b));
+
+    if (rawData.length === 0) {
+        document.getElementById('filterInfo').textContent = 'No data loaded. Check CSV file.';
+        return;
+    }
+
+    // 更新头部显示总数
+    document.getElementById('totalSnakesHeader').textContent = rawData.length;
+
+    // =====================================================================
+    // MAIN VISUALIZATION
+    // =====================================================================
+
+    const allData = rawData;
+    const minAge = d3.min(allData, d => d.age);
+    const maxAge = d3.max(allData, d => d.age);
+    let currentData = allData.slice();
+
+    // 更新统计信息
+    function updateStats(data) {
+        document.getElementById('totalSnakes').textContent = data.length;
+        const totalNodes = data.reduce((sum, d) => sum + d.nnode, 0);
+        document.getElementById('totalNodes').textContent = totalNodes;
+        document.getElementById('avgNodes').textContent = (totalNodes / data.length).toFixed(1);
+        document.getElementById('ageRange').textContent = minAge.toFixed(2) + ' – ' + maxAge.toFixed(2);
+        const filterInfo = document.getElementById('filterInfo');
+        filterInfo.innerHTML = 'Showing <strong>' + data.length + '</strong> Snakes';
+        const filteredCount = document.getElementById('filteredCount');
+        if (data.length === allData.length) {
+            filteredCount.style.display = 'none';
+        } else {
+            filteredCount.style.display = 'block';
+            document.getElementById('filteredN').textContent = data.length;
+        }
+    }
+
+    // ---------- 图表渲染 ----------
+    function drawChart(data) {
+        d3.select('#d3Chart').html('');
+
+        const container = document.getElementById('d3Chart');
+        const rect = container.getBoundingClientRect();
+        const width = rect.width || 1200;
+        const margin = { top: 50, right: 40, bottom: 60, left: 60 };
+        const innerWidth = width - margin.left - margin.right;
+        const height = Math.max(500, innerWidth * 0.55);
+        const innerHeight = height - margin.top - margin.bottom;
+
+        if (data.length === 0) {
+            d3.select('#d3Chart')
+                .append('div')
+                .attr('class', 'no-data-msg')
+                .html('<i class="fas fa-info-circle"></i>No snakes match the selected age range.');
+            return;
+        }
+
+        const lMin = 0, lMax = 360;
+        const bMin = -80, bMax = 80;
+
+        const svg = d3.select('#d3Chart')
+            .append('svg')
+            .attr('width', width)
+            .attr('height', height)
+            .style('background', 'transparent');
+
+        const g = svg.append('g')
+            .attr('transform', `translate(${margin.left},${margin.top})`);
+
+        // 坐标轴
+        const xScale = d3.scaleLinear().domain([lMin, lMax]).range([0, innerWidth]);
+        const yScale = d3.scaleLinear().domain([bMin, bMax]).range([innerHeight, 0]);
+
+        const xAxis = d3.axisBottom(xScale).tickValues(d3.range(0, 361, 45)).tickFormat(d => d + '°');
+        g.append('g').attr('class', 'axis').attr('transform', `translate(0,${innerHeight})`).call(xAxis)
+            .style('font-size', '11px').style('font-family', 'Inter, sans-serif').style('color', '#4a5f7a');
+
+        const yAxis = d3.axisLeft(yScale).tickValues(d3.range(-80, 81, 20)).tickFormat(d => d + '°');
+        g.append('g').attr('class', 'axis').call(yAxis)
+            .style('font-size', '11px').style('font-family', 'Inter, sans-serif').style('color', '#4a5f7a');
+
+        // 网格
+        g.append('g').attr('class', 'grid')
+            .call(d3.axisLeft(yScale).tickValues(d3.range(-80, 81, 20)).tickSize(-innerWidth).tickFormat(''))
+            .style('color', 'rgba(108,43,217,0.05)').style('stroke-dasharray', '4,4');
+        g.append('g').attr('class', 'grid').attr('transform', `translate(0,${innerHeight})`)
+            .call(d3.axisBottom(xScale).tickValues(d3.range(0, 361, 45)).tickSize(-innerHeight).tickFormat(''))
+            .style('color', 'rgba(108,43,217,0.05)').style('stroke-dasharray', '4,4');
+
+        // 轴标签
+        g.append('text').attr('x', innerWidth / 2).attr('y', innerHeight + 45)
+            .attr('text-anchor', 'middle').style('font-size', '13px').style('font-weight', '600')
+            .style('fill', '#3a4f6a').style('font-family', 'Inter, sans-serif').text('Galactic Longitude l (deg)');
+        g.append('text').attr('x', -40).attr('y', 10).attr('text-anchor', 'middle')
+            .style('font-size', '13px').style('font-weight', '600').style('fill', '#3a4f6a')
+            .style('font-family', 'Inter, sans-serif').text('b (deg)').attr('transform', 'rotate(-90)');
+
+        // 颜色映射 (年轻=蓝, 年老=红)
+        const colorScale = d3.scaleSequential(d3.interpolateTurbo)
+            .domain([minAge, maxAge]);
+
+        // 半径映射
+        const radiusScale = d3.scaleSqrt().domain([2, 19]).range([4, 15]).clamp(true);
+
+        // Tooltip
+        const tooltip = d3.select('#tooltip');
+
+        // 绘制点
+        const points = g.selectAll('g.snake-group')
+            .data(data)
+            .enter()
+            .append('a')
+            .attr('class', 'snake-link')
+            .attr('href', d => d.snake + '.html')
+            .attr('target', '_blank')
+            .on('mouseover', function(event, d) {
+                d3.select(this).select('circle')
+                    .transition().duration(150)
+                    .attr('stroke', '#1a1a3a')
+                    .attr('stroke-width', 2.5);
+                tooltip
+                    .classed('visible', true)
+                    .html(`
+                        <div><span class="tt-label">Snake</span> <span class="tt-value">${d.snake}</span></div>
+                        <div><span class="tt-label">N<sub>node</sub></span> <span class="tt-value">${d.nnode}</span></div>
+                        <div><span class="tt-label">N<sub>star</sub></span> <span class="tt-value">${d.nstar.toLocaleString()}</span></div>
+                        <div><span class="tt-label">Age (log)</span> <span class="tt-value">${d.age.toFixed(2)}</span></div>
+                        <div><span class="tt-label">l</span> <span class="tt-value">${d.l.toFixed(2)}°</span> &nbsp; <span class="tt-label">b</span> <span class="tt-value">${d.b.toFixed(2)}°</span></div>
+                    `)
+                    .style('left', (event.clientX + 14) + 'px')
+                    .style('top', (event.clientY - 10) + 'px');
+            })
+            .on('mousemove', function(event) {
+                tooltip
+                    .style('left', (event.clientX + 14) + 'px')
+                    .style('top', (event.clientY - 10) + 'px');
+            })
+            .on('mouseout', function() {
+                d3.select(this).select('circle')
+                    .transition().duration(150)
+                    .attr('stroke', 'none')
+                    .attr('stroke-width', 0);
+                tooltip.classed('visible', false);
+            });
+
+        points.append('circle')
+            .attr('cx', d => xScale(d.l))
+            .attr('cy', d => yScale(d.b))
+            .attr('r', d => radiusScale(d.nnode))
+            .attr('fill', d => colorScale(d.age))
+            .attr('fill-opacity', 0.92)
+            .attr('stroke', 'rgba(255,255,255,0.2)')
+            .attr('stroke-width', 0.5);
+
+        points.append('text')
+            .attr('class', 'snake-label')
+            .attr('x', d => xScale(d.l))
+            .attr('y', d => yScale(d.b))
+            .attr('font-size', d => Math.max(5, Math.min(10, radiusScale(d.nnode) * 0.7)))
+            .attr('fill', '#fff')
+            .attr('font-weight', '700')
+            .attr('text-anchor', 'middle')
+            .attr('dominant-baseline', 'central')
+            .style('pointer-events', 'none')
+            .style('user-select', 'none')
+            .text(d => d.snake)
+            .style('opacity', d => radiusScale(d.nnode) >= 5 ? 1 : 0);
+
+        // 颜色图例 (顶部年轻，底部年老)
+        const legendColor = g.append('g').attr('transform', `translate(${innerWidth - 180}, 10)`);
+        const defs = svg.append('defs');
+        const grad = defs.append('linearGradient').attr('id', 'colorLegendGrad').attr('x1', 0).attr('y1', 1).attr('x2', 0).attr('y2', 0);
+        [
+            { offset: '0%', color: colorScale(maxAge) },
+            { offset: '50%', color: colorScale((maxAge + minAge) / 2) },
+            { offset: '100%', color: colorScale(minAge) }
+        ].forEach(s => {
+            grad.append('stop').attr('offset', s.offset).attr('stop-color', s.color);
+        });
+        legendColor.append('rect').attr('width', 16).attr('height', 120).attr('rx', 4).style('fill', 'url(#colorLegendGrad)');
+        legendColor.append('text').attr('x', 20).attr('y', -4).style('font-size', '9px').style('fill', '#4a5f7a')
+            .style('font-weight', '500').style('font-family', 'Inter, sans-serif').text('Age (log)');
+        legendColor.append('text').attr('x', 20).attr('y', 14).style('font-size', '8px').style('fill', '#6a8aaa')
+            .style('font-family', 'Inter, sans-serif').text('young');
+        legendColor.append('text').attr('x', 20).attr('y', 118).style('font-size', '8px').style('fill', '#6a8aaa')
+            .style('font-family', 'Inter, sans-serif').text('old');
+
+        // 大小图例
+        const legendSize = g.append('g').attr('transform', `translate(20, ${innerHeight - 80})`);
+        legendSize.append('text').attr('x', 0).attr('y', -6).style('font-size', '9px').style('fill', '#4a5f7a')
+            .style('font-weight', '500').style('font-family', 'Inter, sans-serif').text('Nnode');
+        [2, 6, 12, 19].forEach((val, i) => {
+            const x = i * 45;
+            const r = radiusScale(val);
+            legendSize.append('circle').attr('cx', x + 12).attr('cy', 14).attr('r', r)
+                .attr('fill', '#6c2bd9').attr('fill-opacity', 0.5).attr('stroke', '#6c2bd9').attr('stroke-width', 0.5);
+            legendSize.append('text').attr('x', x + 12).attr('y', 32).style('font-size', '8px')
+                .style('fill', '#4a5f7a').style('font-family', 'Inter, sans-serif').style('text-anchor', 'middle').text(val);
+        });
+    }
+
+    // ---------- 筛选逻辑 ----------
+    const ageFilter = document.getElementById('ageFilter');
+    ageFilter.addEventListener('change', function() {
+        const val = this.value;
+        if (val === 'all') {
+            currentData = allData.slice();
+        } else {
+            const ranges = {
+                'young': [null, 7.0],
+                '7.0-7.4': [7.0, 7.4],
+                '7.4-7.8': [7.4, 7.8],
+                '7.8-8.2': [7.8, 8.2],
+                '8.2-8.6': [8.2, 8.6],
+                '8.6-9.0': [8.6, 9.0],
+                '9.0-9.4': [9.0, 9.4],
+                'old': [9.4, null]
+            };
+            const range = ranges[val];
+            if (range) {
+                currentData = allData.filter(d => {
+                    if (range[0] === null) return d.age < range[1];
+                    if (range[1] === null) return d.age >= range[0];
+                    return d.age >= range[0] && d.age < range[1];
+                });
+            } else {
+                currentData = allData.slice();
+            }
+        }
+        updateStats(currentData);
+        drawChart(currentData);
+    });
+
+    // ---------- 初始渲染 ----------
+    updateStats(allData);
+    drawChart(allData);
+
+    // ---------- 窗口自适应 ----------
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+            drawChart(currentData);
+        }, 300);
+    });
+
+    console.log('🐍 Snake Spatial Distribution loaded!');
+    console.log(`📊 ${allData.length} snakes. Age range: ${minAge.toFixed(2)} - ${maxAge.toFixed(2)}`);
+}).catch(function(error) {
+    console.error('Error loading CSV:', error);
+    document.getElementById('filterInfo').textContent = 'Error loading data. Please ensure snake_s.csv is in the same directory.';
+    document.getElementById('totalSnakesHeader').textContent = 'Error';
+});
+</script>
+
+</body>
+</html>
