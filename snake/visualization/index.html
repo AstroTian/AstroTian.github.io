@@ -76,6 +76,7 @@
             padding-bottom: 0.8rem;
             margin-bottom: 1.5rem;
             display: inline-block;
+            width: fit-content;    /* 边框宽度与文字匹配 */
         }
         .header-sub i {
             color: #6c2bd9;
@@ -155,6 +156,7 @@
             .header-sub {
                 font-size: 1rem;
                 display: inline-block;
+                width: fit-content;
             }
         }
         @media (max-width: 400px) {
@@ -413,7 +415,8 @@
 
     <!-- ====== HEADER ====== -->
     <div class="d-flex flex-wrap align-items-center justify-content-between" style="flex-wrap: nowrap;">
-        <div style="flex:1; min-width:0; margin-right:1rem;">
+        <!-- 标题区域：flex:0 0 auto 避免撑满，让右侧靠右 -->
+        <div style="flex:0 0 auto; min-width:0; margin-right:1rem;">
             <div class="header-title">
                 <i class="fas fa-chart-simple"></i> Snake Spatial Distribution
             </div>
@@ -421,6 +424,7 @@
                 <i class="fas fa-snake"></i> <span id="totalSnakesHeader">Loading...</span> Stellar Snake candidates · Color-coded by age
             </div>
         </div>
+        <!-- 右上角：三个点 + Home -->
         <div class="header-right">
             <div class="deco-dots">
                 <div class="dots-row">
@@ -437,7 +441,7 @@
     <div class="intro-text">
         <span class="highlight">Stellar Snake</span> candidates identified in <em>The Stellar “Snake”-V</em> (Yang et al. 2026).
         Color indicates <span class="highlight">log<sub>10</sub>(age/yr)</span> — <span style="color:#1a6fb5;">bluer</span> for younger,
-        <span style="color:#b51a1a;">redder</span> for older. Point size scales with <span class="highlight">N<sub>node</sub></span>.
+        <span style="color:#b51a1a;">redder</span> for older. Point size scales with <span class="highlight">N<sub>star</sub></span>.
         Click any point to view its dedicated page.
         <br><span style="font-size:0.9rem; color:#6a8aaa;"><i class="fas fa-vector-square"></i> <strong>Drag</strong> to zoom into a region · <strong>Double‑click</strong> to reset view</span>
     </div>
@@ -453,12 +457,20 @@
             <div class="stat-label">Total Nodes</div>
         </div>
         <div class="stat-item">
-            <div class="stat-number" id="ageRange">—</div>
-            <div class="stat-label">Age Range (log)</div>
-        </div>
-        <div class="stat-item">
             <div class="stat-number" id="avgNodes">—</div>
             <div class="stat-label">Avg Nodes / Snake</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number" id="totalStars">—</div>
+            <div class="stat-label">Total Stars</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number" id="avgStars">—</div>
+            <div class="stat-label">Avg Stars / Snake</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number" id="ageRange">—</div>
+            <div class="stat-label">Age Range (log)</div>
         </div>
         <div class="stat-item" id="filteredCount" style="display:none;">
             <div class="stat-number" id="filteredN">—</div>
@@ -517,7 +529,7 @@
             <i class="fas fa-mouse-pointer"></i> Hover · Click
         </div>
         <div class="legend-item" style="margin-left:0.5rem;">
-            <span style="font-weight:500; color:#1a1a3a;">N<sub>node</sub>:</span>
+            <span style="font-weight:500; color:#1a1a3a;">N<sub>star</sub>:</span>
             <span class="legend-dot" style="width:6px; height:6px; background:#6c2bd9;"></span>
             <span>small</span>
             <span class="legend-dot" style="width:10px; height:10px; background:#6c2bd9; margin-left:0.3rem;"></span>
@@ -591,6 +603,12 @@ d3.csv("snake_s.csv").then(function(csvData) {
         document.getElementById('totalNodes').textContent = totalNodes;
         document.getElementById('avgNodes').textContent = (totalNodes / data.length).toFixed(1);
         document.getElementById('ageRange').textContent = minAge.toFixed(2) + ' – ' + maxAge.toFixed(2);
+
+        // 新增统计
+        const totalStars = data.reduce((sum, d) => sum + d.nstar, 0);
+        document.getElementById('totalStars').textContent = totalStars.toLocaleString();
+        document.getElementById('avgStars').textContent = (totalStars / data.length).toFixed(1);
+
         const filterInfo = document.getElementById('filterInfo');
         filterInfo.innerHTML = 'Showing <strong>' + data.length + '</strong> Snakes';
         const filteredCount = document.getElementById('filteredCount');
@@ -701,7 +719,12 @@ d3.csv("snake_s.csv").then(function(csvData) {
         const colorScale = d3.scaleSequential(d3.interpolateTurbo)
             .domain([minAge, maxAge]);
 
-        const radiusScale = d3.scaleSqrt().domain([2, 19]).range([4, 15]).clamp(true);
+        // --- 点大小根据 Nstar 映射 ---
+        const minNstar = d3.min(data, d => d.nstar);
+        const maxNstar = d3.max(data, d => d.nstar);
+        const radiusScale = d3.scaleSqrt()
+            .domain([minNstar, maxNstar])
+            .range([3, 15]);   // 最小半径3px，最大15px
 
         const tooltip = d3.select('#tooltip');
 
@@ -745,17 +768,18 @@ d3.csv("snake_s.csv").then(function(csvData) {
         points.append('circle')
             .attr('cx', d => xScale(d.l))
             .attr('cy', d => yScale(d.b))
-            .attr('r', d => radiusScale(d.nnode))
+            .attr('r', d => radiusScale(d.nstar))
             .attr('fill', d => colorScale(d.age))
             .attr('fill-opacity', 0.92)
             .attr('stroke', 'rgba(255,255,255,0.2)')
             .attr('stroke-width', 0.5);
 
+        // 标签：根据半径决定是否显示数字（条件可保留）
         points.append('text')
             .attr('class', 'snake-label')
             .attr('x', d => xScale(d.l))
             .attr('y', d => yScale(d.b))
-            .attr('font-size', d => Math.max(5, Math.min(10, radiusScale(d.nnode) * 0.7)))
+            .attr('font-size', d => Math.max(5, Math.min(10, radiusScale(d.nstar) * 0.7)))
             .attr('fill', '#fff')
             .attr('font-weight', '700')
             .attr('text-anchor', 'middle')
@@ -763,7 +787,7 @@ d3.csv("snake_s.csv").then(function(csvData) {
             .style('pointer-events', 'none')
             .style('user-select', 'none')
             .text(d => d.snake)
-            .style('opacity', d => radiusScale(d.nnode) >= 5 ? 1 : 0);
+            .style('opacity', d => radiusScale(d.nstar) >= 5 ? 1 : 0);
 
         // 颜色图例 (顶部年轻，底部年老)
         const legendColor = g.append('g').attr('transform', `translate(${innerWidth - 180}, 10)`);
@@ -784,11 +808,17 @@ d3.csv("snake_s.csv").then(function(csvData) {
         legendColor.append('text').attr('x', 20).attr('y', 118).style('font-size', '8px').style('fill', '#6a8aaa')
             .style('font-family', 'Inter, sans-serif').text('old');
 
-        // 大小图例
+        // 大小图例 (基于Nstar)
         const legendSize = g.append('g').attr('transform', `translate(20, ${innerHeight - 80})`);
         legendSize.append('text').attr('x', 0).attr('y', -6).style('font-size', '9px').style('fill', '#4a5f7a')
-            .style('font-weight', '500').style('font-family', 'Inter, sans-serif').text('Nnode');
-        [2, 6, 12, 19].forEach((val, i) => {
+            .style('font-weight', '500').style('font-family', 'Inter, sans-serif').text('Nstar');
+        // 选择几个代表性的值展示
+        const starVals = [d3.quantile(data, 0.1, d => d.nstar) || 0,
+                          d3.quantile(data, 0.5, d => d.nstar) || 0,
+                          d3.quantile(data, 0.9, d => d.nstar) || 0];
+        // 为避免显示0，用实际值
+        const displayVals = starVals.map(v => Math.round(v));
+        displayVals.forEach((val, i) => {
             const x = i * 45;
             const r = radiusScale(val);
             legendSize.append('circle').attr('cx', x + 12).attr('cy', 14).attr('r', r)
