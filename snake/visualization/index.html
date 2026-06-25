@@ -86,7 +86,7 @@
             display: flex;
             align-items: center;
             flex-shrink: 0;
-            margin-left: 1rem;
+            margin-left: auto;      /* 确保靠右 */
             padding-left: 0.5rem;
         }
 
@@ -130,12 +130,14 @@
         .dot2 { background: #3a7bd5; }
         .dot3 { background: #f9a826; }
 
+        /* 移动端：仍保持靠右，改为水平排列以节省空间 */
         @media (max-width: 700px) {
             .header-right {
-                margin-left: 0.5rem;
+                margin-left: auto;   /* 保持靠右 */
+                padding-left: 0.5rem;
             }
             .deco-dots {
-                flex-direction: row;
+                flex-direction: row;  /* 水平排列 */
                 gap: 0.3rem;
                 align-items: center;
             }
@@ -663,17 +665,44 @@ d3.csv("snake_s.csv").then(function(csvData) {
             .style('font-size', '13px').style('font-weight', '600').style('fill', '#3a4f6a')
             .style('font-family', 'Inter, sans-serif').text('b (deg)').attr('transform', 'rotate(-90)');
 
-        // 颜色映射 (年轻=蓝, 年老=红)
+        // ========== 先添加 BRUSH（放在底层，不影响上层点的事件） ==========
+        const brush = d3.brush()
+            .extent([[0, 0], [innerWidth, innerHeight]])
+            .on('end', function(event) {
+                if (!event.selection) return;
+                const [[x0, y0], [x1, y1]] = event.selection;
+                if (Math.abs(x1 - x0) < 20 || Math.abs(y1 - y0) < 20) return;
+
+                const newX = [xScale.invert(x0), xScale.invert(x1)].sort((a,b) => a - b);
+                const newY = [yScale.invert(y1), yScale.invert(y0)].sort((a,b) => a - b);
+
+                xDomain = newX;
+                yDomain = newY;
+                drawChart(currentData);
+            });
+
+        const brushG = g.append('g')
+            .attr('class', 'brush')
+            .call(brush);
+
+        // 美化 brush 样式
+        brushG.selectAll('.overlay')
+            .style('fill', 'none')
+            .style('pointer-events', 'all');   // 保持可拖拽，但点在上层会覆盖事件
+        brushG.selectAll('.selection')
+            .style('fill', 'rgba(108,43,217,0.1)')
+            .style('stroke', '#6c2bd9')
+            .style('stroke-width', '1.5px')
+            .style('stroke-dasharray', '4,2');
+
+        // ========== 然后绘制点（覆盖在 brush 之上，使鼠标事件优先） ==========
         const colorScale = d3.scaleSequential(d3.interpolateTurbo)
             .domain([minAge, maxAge]);
 
-        // 半径映射
         const radiusScale = d3.scaleSqrt().domain([2, 19]).range([4, 15]).clamp(true);
 
-        // Tooltip
         const tooltip = d3.select('#tooltip');
 
-        // 绘制点
         const points = g.selectAll('g.snake-group')
             .data(data)
             .enter()
@@ -765,41 +794,6 @@ d3.csv("snake_s.csv").then(function(csvData) {
             legendSize.append('text').attr('x', x + 12).attr('y', 32).style('font-size', '8px')
                 .style('fill', '#4a5f7a').style('font-family', 'Inter, sans-serif').style('text-anchor', 'middle').text(val);
         });
-
-        // ========== BRUSH 功能 ==========
-        const brush = d3.brush()
-            .extent([[0, 0], [innerWidth, innerHeight]])
-            .on('end', function(event) {
-                if (!event.selection) return;
-                const [[x0, y0], [x1, y1]] = event.selection;
-                // 避免点击误触（至少 20 像素宽高）
-                if (Math.abs(x1 - x0) < 20 || Math.abs(y1 - y0) < 20) return;
-
-                // 转换为数据域（注意 y 轴反向）
-                const newX = [xScale.invert(x0), xScale.invert(x1)].sort((a,b) => a - b);
-                const newY = [yScale.invert(y1), yScale.invert(y0)].sort((a,b) => a - b);
-
-                // 更新全局缩放域
-                xDomain = newX;
-                yDomain = newY;
-                // 重绘
-                drawChart(currentData);
-            });
-
-        const brushG = g.append('g')
-            .attr('class', 'brush')
-            .call(brush);
-
-        // 美化 brush 样式（已在 CSS 中定义）
-        // 确保 brush 覆盖绘图区域，但不影响轴
-        brushG.selectAll('.overlay')
-            .style('fill', 'none')
-            .style('pointer-events', 'all');
-        brushG.selectAll('.selection')
-            .style('fill', 'rgba(108,43,217,0.1)')
-            .style('stroke', '#6c2bd9')
-            .style('stroke-width', '1.5px')
-            .style('stroke-dasharray', '4,2');
     }
 
     // ---------- 筛选逻辑 ----------
@@ -830,7 +824,6 @@ d3.csv("snake_s.csv").then(function(csvData) {
                 currentData = allData.slice();
             }
         }
-        // 筛选后重置缩放域到全局，更符合直觉
         xDomain = [0, 360];
         yDomain = [-80, 80];
         updateStats(currentData);
