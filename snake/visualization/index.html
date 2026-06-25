@@ -441,7 +441,7 @@
     <div class="intro-text">
         <span class="highlight">Stellar Snake</span> candidates identified in <em>The Stellar “Snake”-V</em> (Yang et al. 2026).
         Color indicates <span class="highlight">log<sub>10</sub>(age/yr)</span> — <span style="color:#1a6fb5;">bluer</span> for younger,
-        <span style="color:#b51a1a;">redder</span> for older. Point size scales with <span class="highlight">N<sub>star</sub></span>.
+        <span style="color:#b51a1a;">redder</span> for older. Point size scales with <span class="highlight">log<sub>10</sub>(N<sub>star</sub>)</span>.
         Click any point to view its dedicated page.
         <br><span style="font-size:0.9rem; color:#6a8aaa;"><i class="fas fa-vector-square"></i> <strong>Drag</strong> to zoom into a region · <strong>Double‑click</strong> to reset view</span>
     </div>
@@ -529,13 +529,13 @@
             <i class="fas fa-mouse-pointer"></i> Hover · Click
         </div>
         <div class="legend-item" style="margin-left:0.5rem;">
-            <span style="font-weight:500; color:#1a1a3a;">N<sub>star</sub>:</span>
+            <span style="font-weight:500; color:#1a1a3a;">log<sub>10</sub>(N<sub>star</sub>):</span>
             <span class="legend-dot" style="width:6px; height:6px; background:#6c2bd9;"></span>
-            <span>small</span>
+            <span>low</span>
             <span class="legend-dot" style="width:10px; height:10px; background:#6c2bd9; margin-left:0.3rem;"></span>
             <span>med</span>
             <span class="legend-dot" style="width:16px; height:16px; background:#6c2bd9; margin-left:0.3rem;"></span>
-            <span>large</span>
+            <span>high</span>
         </div>
     </div>
 
@@ -719,11 +719,11 @@ d3.csv("snake_s.csv").then(function(csvData) {
         const colorScale = d3.scaleSequential(d3.interpolateTurbo)
             .domain([minAge, maxAge]);
 
-        // --- 点大小根据 Nstar 映射 ---
-        const minNstar = d3.min(data, d => d.nstar);
-        const maxNstar = d3.max(data, d => d.nstar);
+        // --- 点大小根据 log10(Nstar) 映射 ---
+        const minLogNstar = d3.min(data, d => Math.log10(d.nstar));
+        const maxLogNstar = d3.max(data, d => Math.log10(d.nstar));
         const radiusScale = d3.scaleSqrt()
-            .domain([minNstar, maxNstar])
+            .domain([minLogNstar, maxLogNstar])
             .range([3, 15]);   // 最小半径3px，最大15px
 
         const tooltip = d3.select('#tooltip');
@@ -768,18 +768,18 @@ d3.csv("snake_s.csv").then(function(csvData) {
         points.append('circle')
             .attr('cx', d => xScale(d.l))
             .attr('cy', d => yScale(d.b))
-            .attr('r', d => radiusScale(d.nstar))
+            .attr('r', d => radiusScale(Math.log10(d.nstar)))
             .attr('fill', d => colorScale(d.age))
             .attr('fill-opacity', 0.92)
             .attr('stroke', 'rgba(255,255,255,0.2)')
             .attr('stroke-width', 0.5);
 
-        // 标签：根据半径决定是否显示数字（条件可保留）
+        // 标签：根据半径决定是否显示数字
         points.append('text')
             .attr('class', 'snake-label')
             .attr('x', d => xScale(d.l))
             .attr('y', d => yScale(d.b))
-            .attr('font-size', d => Math.max(5, Math.min(10, radiusScale(d.nstar) * 0.7)))
+            .attr('font-size', d => Math.max(5, Math.min(10, radiusScale(Math.log10(d.nstar)) * 0.7)))
             .attr('fill', '#fff')
             .attr('font-weight', '700')
             .attr('text-anchor', 'middle')
@@ -787,7 +787,7 @@ d3.csv("snake_s.csv").then(function(csvData) {
             .style('pointer-events', 'none')
             .style('user-select', 'none')
             .text(d => d.snake)
-            .style('opacity', d => radiusScale(d.nstar) >= 5 ? 1 : 0);
+            .style('opacity', d => radiusScale(Math.log10(d.nstar)) >= 5 ? 1 : 0);
 
         // 颜色图例 (顶部年轻，底部年老)
         const legendColor = g.append('g').attr('transform', `translate(${innerWidth - 180}, 10)`);
@@ -808,23 +808,22 @@ d3.csv("snake_s.csv").then(function(csvData) {
         legendColor.append('text').attr('x', 20).attr('y', 118).style('font-size', '8px').style('fill', '#6a8aaa')
             .style('font-family', 'Inter, sans-serif').text('old');
 
-        // 大小图例 (基于Nstar)
+        // 大小图例 (基于 log10(Nstar) 的几个示例值)
         const legendSize = g.append('g').attr('transform', `translate(20, ${innerHeight - 80})`);
         legendSize.append('text').attr('x', 0).attr('y', -6).style('font-size', '9px').style('fill', '#4a5f7a')
-            .style('font-weight', '500').style('font-family', 'Inter, sans-serif').text('Nstar');
-        // 选择几个代表性的值展示
-        const starVals = [d3.quantile(data, 0.1, d => d.nstar) || 0,
-                          d3.quantile(data, 0.5, d => d.nstar) || 0,
-                          d3.quantile(data, 0.9, d => d.nstar) || 0];
-        // 为避免显示0，用实际值
-        const displayVals = starVals.map(v => Math.round(v));
-        displayVals.forEach((val, i) => {
+            .style('font-weight', '500').style('font-family', 'Inter, sans-serif').text('log10(Nstar)');
+        // 选取三个具有代表性的 logNstar 值（例如 10%, 50%, 90% 分位数）
+        const logVals = [d3.quantile(data, 0.1, d => Math.log10(d.nstar)),
+                         d3.quantile(data, 0.5, d => Math.log10(d.nstar)),
+                         d3.quantile(data, 0.9, d => Math.log10(d.nstar))];
+        logVals.forEach((val, i) => {
             const x = i * 45;
             const r = radiusScale(val);
             legendSize.append('circle').attr('cx', x + 12).attr('cy', 14).attr('r', r)
                 .attr('fill', '#6c2bd9').attr('fill-opacity', 0.5).attr('stroke', '#6c2bd9').attr('stroke-width', 0.5);
             legendSize.append('text').attr('x', x + 12).attr('y', 32).style('font-size', '8px')
-                .style('fill', '#4a5f7a').style('font-family', 'Inter, sans-serif').style('text-anchor', 'middle').text(val);
+                .style('fill', '#4a5f7a').style('font-family', 'Inter, sans-serif').style('text-anchor', 'middle')
+                .text(val.toFixed(1));
         });
     }
 
