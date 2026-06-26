@@ -520,6 +520,14 @@
             <option value="9.0-9.4">9.0 – 9.4</option>
             <option value="old">≥ 9.4 (Old)</option>
         </select>
+        <!-- 新增等级筛选 -->
+        <label><i class="fas fa-star" style="color:#f9a826;"></i> Quality:</label>
+        <select id="gradeFilter">
+            <option value="all">All Snakes</option>
+            <option value="gold">Gold</option>
+            <option value="silver">Silver</option>
+            <option value="bronze">Bronze</option>
+        </select>
         <span class="filter-info" id="filterInfo">Loading data...</span>
         <!-- 速度显示开关 -->
         <label style="margin-left:0.5rem;">
@@ -579,7 +587,7 @@
     </div>
 
     <div class="hint-text">
-        <i class="fas fa-info-circle"></i> Use the dropdown above to filter by age. Hover for details, click to open Snake page.
+        <i class="fas fa-info-circle"></i> Use the dropdown above to filter by age and quality. Hover for details, click to open Snake page.
         <span id="velHint" style="display:none; margin-left:0.5rem;">· Red arrows show tangential velocities (l,b).</span>
     </div>
 
@@ -600,17 +608,382 @@
 
 <script>
 // =====================================================================
-// 使用 D3 加载同目录下的 snake_s2.csv 文件 (包含新增列)
+// 使用 D3 加载同目录下的 snake_s3.csv 文件 (包含新增列 sri_final_grade)
 // =====================================================================
 
 // 全局缩放状态
 let xDomain = [0, 360];
 let yDomain = [-80, 80];
 let showVel = false;  // 当前是否显示速度
+let allData = [];     // 所有原始数据
+let currentData = []; // 当前过滤后的数据
 
-d3.csv("snake_s2.csv").then(function(csvData) {
-    // 解析数据（新增 parallax, pml, pmb）
-    const rawData = csvData.map(d => ({
+// DOM 元素引用
+const ageFilterEl = document.getElementById('ageFilter');
+const gradeFilterEl = document.getElementById('gradeFilter');
+const velCheckbox = document.getElementById('showVelocities');
+
+// 应用所有过滤器，返回过滤后的数据
+function applyFilters(data) {
+    const ageVal = ageFilterEl.value;
+    const gradeVal = gradeFilterEl.value;
+    
+    let filtered = data.slice();
+    
+    // 年龄过滤
+    if (ageVal !== 'all') {
+        const ranges = {
+            'young': [null, 7.0],
+            '7.0-7.4': [7.0, 7.4],
+            '7.4-7.8': [7.4, 7.8],
+            '7.8-8.2': [7.8, 8.2],
+            '8.2-8.6': [8.2, 8.6],
+            '8.6-9.0': [8.6, 9.0],
+            '9.0-9.4': [9.0, 9.4],
+            'old': [9.4, null]
+        };
+        const range = ranges[ageVal];
+        if (range) {
+            filtered = filtered.filter(d => {
+                if (range[0] === null) return d.age < range[1];
+                if (range[1] === null) return d.age >= range[0];
+                return d.age >= range[0] && d.age < range[1];
+            });
+        }
+    }
+    
+    // 等级过滤
+    if (gradeVal !== 'all') {
+        filtered = filtered.filter(d => d.grade === gradeVal);
+    }
+    
+    return filtered;
+}
+
+// 更新统计信息
+function updateStats(data) {
+    document.getElementById('totalSnakes').textContent = data.length;
+    const totalNodes = data.reduce((sum, d) => sum + d.nnode, 0);
+    document.getElementById('totalNodes').textContent = totalNodes;
+    document.getElementById('avgNodes').textContent = (totalNodes / data.length).toFixed(1);
+    
+    const totalStars = data.reduce((sum, d) => sum + d.nstar, 0);
+    document.getElementById('totalStars').textContent = totalStars.toLocaleString();
+    document.getElementById('avgStars').textContent = (totalStars / data.length).toFixed(1);
+    
+    const minAge = d3.min(data, d => d.age);
+    const maxAge = d3.max(data, d => d.age);
+    document.getElementById('ageRange').textContent = minAge.toFixed(2) + ' – ' + maxAge.toFixed(2);
+    
+    const filterInfo = document.getElementById('filterInfo');
+    filterInfo.innerHTML = 'Showing <strong>' + data.length + '</strong> Snakes';
+    const filteredCount = document.getElementById('filteredCount');
+    if (data.length === allData.length) {
+        filteredCount.style.display = 'none';
+    } else {
+        filteredCount.style.display = 'block';
+        document.getElementById('filteredN').textContent = data.length;
+    }
+}
+
+// ---------- 计算每个点的速度 (l,b 方向) ----------
+function computeVelocities(data) {
+    const factor = 4.74; // 转换因子
+    return data.map(d => {
+        let v_l = 0, v_b = 0, v_mag = 0;
+        if (d.parallax > 0) {
+            const dist = 1.0 / d.parallax; // kpc
+            v_l = factor * d.pml * dist;
+            v_b = factor * d.pmb * dist;
+            v_mag = Math.sqrt(v_l*v_l + v_b*v_b);
+        }
+        return { ...d, v_l, v_b, v_mag };
+    });
+}
+
+// ---------- 图表渲染 ----------
+function drawChart(data, showVelocities) {
+    d3.select('#d3Chart').html('');
+
+    const container = document.getElementById('d3Chart');
+    const rect = container.getBoundingClientRect();
+    const width = rect.width || 1200;
+    const margin = { top: 50, right: 40, bottom: 60, left: 60 };
+    const innerWidth = width - margin.left - margin.right;
+    const height = Math.max(500, innerWidth * 0.55);
+    const innerHeight = height - margin.top - margin.bottom;
+
+    if (data.length === 0) {
+        d3.select('#d3Chart')
+            .append('div')
+            .attr('class', 'no-data-msg')
+            .html('<i class="fas fa-info-circle"></i>No snakes match the selected filters.');
+        return;
+    }
+
+    // --- 计算速度数据 ---
+    const velData = computeVelocities(data);
+
+    // --- 坐标轴 ---
+    const xScale = d3.scaleLinear().domain(xDomain).range([0, innerWidth]);
+    const yScale = d3.scaleLinear().domain(yDomain).range([innerHeight, 0]);
+
+    const svg = d3.select('#d3Chart')
+        .append('svg')
+        .attr('width', width)
+        .attr('height', height)
+        .style('background', 'transparent');
+
+    // 双击重置视图
+    svg.on('dblclick', function() {
+        xDomain = [0, 360];
+        yDomain = [-80, 80];
+        drawChart(currentData, showVel);
+    });
+
+    const g = svg.append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+
+    // 坐标轴
+    const xAxis = d3.axisBottom(xScale).tickValues(d3.range(0, 361, 45)).tickFormat(d => d + '°');
+    g.append('g').attr('class', 'axis').attr('transform', `translate(0,${innerHeight})`).call(xAxis)
+        .style('font-size', '11px').style('font-family', 'Inter, sans-serif').style('color', '#4a5f7a');
+
+    const yAxis = d3.axisLeft(yScale).tickValues(d3.range(-80, 81, 20)).tickFormat(d => d + '°');
+    g.append('g').attr('class', 'axis').call(yAxis)
+        .style('font-size', '11px').style('font-family', 'Inter, sans-serif').style('color', '#4a5f7a');
+
+    // 网格
+    g.append('g').attr('class', 'grid')
+        .call(d3.axisLeft(yScale).tickValues(d3.range(-80, 81, 20)).tickSize(-innerWidth).tickFormat(''))
+        .style('color', 'rgba(108,43,217,0.05)').style('stroke-dasharray', '4,4');
+    g.append('g').attr('class', 'grid').attr('transform', `translate(0,${innerHeight})`)
+        .call(d3.axisBottom(xScale).tickValues(d3.range(0, 361, 45)).tickSize(-innerHeight).tickFormat(''))
+        .style('color', 'rgba(108,43,217,0.05)').style('stroke-dasharray', '4,4');
+
+    // 轴标签
+    g.append('text').attr('x', innerWidth / 2).attr('y', innerHeight + 45)
+        .attr('text-anchor', 'middle').style('font-size', '13px').style('font-weight', '600')
+        .style('fill', '#3a4f6a').style('font-family', 'Inter, sans-serif').text('Galactic Longitude l (deg)');
+    g.append('text').attr('x', -40).attr('y', 10).attr('text-anchor', 'middle')
+        .style('font-size', '13px').style('font-weight', '600').style('fill', '#3a4f6a')
+        .style('font-family', 'Inter, sans-serif').text('b (deg)').attr('transform', 'rotate(-90)');
+
+    // ========== BRUSH ==========
+    const brush = d3.brush()
+        .extent([[0, 0], [innerWidth, innerHeight]])
+        .on('end', function(event) {
+            if (!event.selection) return;
+            const [[x0, y0], [x1, y1]] = event.selection;
+            if (Math.abs(x1 - x0) < 20 || Math.abs(y1 - y0) < 20) return;
+
+            const newX = [xScale.invert(x0), xScale.invert(x1)].sort((a,b) => a - b);
+            const newY = [yScale.invert(y1), yScale.invert(y0)].sort((a,b) => a - b);
+
+            xDomain = newX;
+            yDomain = newY;
+            drawChart(currentData, showVel);
+        });
+
+    const brushG = g.append('g')
+        .attr('class', 'brush')
+        .call(brush);
+
+    brushG.selectAll('.overlay')
+        .style('fill', 'none')
+        .style('pointer-events', 'all');
+    brushG.selectAll('.selection')
+        .style('fill', 'rgba(108,43,217,0.1)')
+        .style('stroke', '#6c2bd9')
+        .style('stroke-width', '1.5px')
+        .style('stroke-dasharray', '4,2');
+
+    // ========== 速度箭头 (先绘制，让点覆盖) ==========
+    if (showVelocities) {
+        // 计算中位速度模（仅考虑有视差的点）
+        const validVel = velData.filter(d => d.parallax > 0 && d.v_mag > 0);
+        if (validVel.length > 0) {
+            const maxV = d3.median(validVel, d => d.v_mag);
+            const maxArrowLen = 70; // 像素，放大到70以便更清晰
+            const scale = maxArrowLen / maxV; // 像素/(km/s)
+
+            // 显示图例
+            document.getElementById('velocityLegend').style.display = 'flex';
+            document.getElementById('velScaleLabel').textContent = maxV.toFixed(1);
+            document.getElementById('velHint').style.display = 'inline';
+
+            // 定义 marker
+            const defs = svg.append('defs');
+            defs.append('marker')
+                .attr('id', 'arrowhead')
+                .attr('markerWidth', 10)
+                .attr('markerHeight', 8)
+                .attr('refX', 7)
+                .attr('refY', 3)
+                .attr('orient', 'auto')
+                .append('polygon')
+                .attr('points', '0 0, 8 3, 0 6')
+                .attr('fill', '#e74c3c')
+                .attr('stroke', 'none');
+
+            // 箭头组
+            const arrowGroup = g.append('g').attr('class', 'velocity-arrows');
+
+            validVel.forEach(d => {
+                const cx = xScale(d.l);
+                const cy = yScale(d.b);
+                const dx_px = scale * d.v_l;
+                const dy_px = -scale * d.v_b; // b 轴正向对应 y 减小
+                const endX = cx + dx_px;
+                const endY = cy + dy_px;
+
+                arrowGroup.append('line')
+                    .attr('x1', cx)
+                    .attr('y1', cy)
+                    .attr('x2', endX)
+                    .attr('y2', endY)
+                    .attr('stroke', '#e74c3c')
+                    .attr('stroke-width', 2.0)
+                    .attr('stroke-opacity', 0.7)
+                    .attr('marker-end', 'url(#arrowhead)');
+            });
+        } else {
+            // 没有有效速度数据，隐藏图例
+            document.getElementById('velocityLegend').style.display = 'none';
+            document.getElementById('velHint').style.display = 'none';
+        }
+    } else {
+        document.getElementById('velocityLegend').style.display = 'none';
+        document.getElementById('velHint').style.display = 'none';
+    }
+
+    // ========== 绘制点 ==========
+    const minAge = d3.min(data, d => d.age);
+    const maxAge = d3.max(data, d => d.age);
+    const colorScale = d3.scaleSequential(d3.interpolateTurbo)
+        .domain([minAge, maxAge]);
+
+    const minLogNstar = d3.min(data, d => Math.log10(d.nstar));
+    const maxLogNstar = d3.max(data, d => Math.log10(d.nstar));
+    const radiusScale = d3.scaleSqrt()
+        .domain([minLogNstar, maxLogNstar])
+        .range([3, 15]);
+
+    const tooltip = d3.select('#tooltip');
+
+    const points = g.selectAll('g.snake-group')
+        .data(data)
+        .enter()
+        .append('a')
+        .attr('class', 'snake-link')
+        .attr('href', d => d.snake + '.html')
+        .attr('target', '_blank')
+        .on('mouseover', function(event, d) {
+            d3.select(this).select('circle')
+                .transition().duration(150)
+                .attr('stroke', '#1a1a3a')
+                .attr('stroke-width', 2.5);
+            tooltip
+                .classed('visible', true)
+                .html(`
+                    <div><span class="tt-label">Snake</span> <span class="tt-value">${d.snake}</span></div>
+                    <div><span class="tt-label">N<sub>node</sub></span> <span class="tt-value">${d.nnode}</span></div>
+                    <div><span class="tt-label">N<sub>star</sub></span> <span class="tt-value">${d.nstar.toLocaleString()}</span></div>
+                    <div><span class="tt-label">Age (log)</span> <span class="tt-value">${d.age.toFixed(2)}</span></div>
+                    <div><span class="tt-label">Grade</span> <span class="tt-value" style="text-transform:capitalize;">${d.grade}</span></div>
+                    <div><span class="tt-label">l</span> <span class="tt-value">${d.l.toFixed(2)}°</span> &nbsp; <span class="tt-label">b</span> <span class="tt-value">${d.b.toFixed(2)}°</span></div>
+                    <div><span class="tt-label">v<sub>l</sub></span> <span class="tt-value">${d.pml ? (4.74 * d.pml / d.parallax).toFixed(1) : '—'} km/s</span></div>
+                    <div><span class="tt-label">v<sub>b</sub></span> <span class="tt-value">${d.pmb ? (4.74 * d.pmb / d.parallax).toFixed(1) : '—'} km/s</span></div>
+                `)
+                .style('left', (event.clientX + 14) + 'px')
+                .style('top', (event.clientY - 10) + 'px');
+        })
+        .on('mousemove', function(event) {
+            tooltip
+                .style('left', (event.clientX + 14) + 'px')
+                .style('top', (event.clientY - 10) + 'px');
+        })
+        .on('mouseout', function() {
+            d3.select(this).select('circle')
+                .transition().duration(150)
+                .attr('stroke', 'none')
+                .attr('stroke-width', 0);
+            tooltip.classed('visible', false);
+        });
+
+    points.append('circle')
+        .attr('cx', d => xScale(d.l))
+        .attr('cy', d => yScale(d.b))
+        .attr('r', d => radiusScale(Math.log10(d.nstar)))
+        .attr('fill', d => colorScale(d.age))
+        .attr('fill-opacity', 0.92)
+        .attr('stroke', 'rgba(255,255,255,0.2)')
+        .attr('stroke-width', 0.5);
+
+    points.append('text')
+        .attr('class', 'snake-label')
+        .attr('x', d => xScale(d.l))
+        .attr('y', d => yScale(d.b))
+        .attr('font-size', d => Math.max(5, Math.min(10, radiusScale(Math.log10(d.nstar)) * 0.7)))
+        .attr('fill', '#fff')
+        .attr('font-weight', '700')
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'central')
+        .style('pointer-events', 'none')
+        .style('user-select', 'none')
+        .text(d => d.snake)
+        .style('opacity', d => radiusScale(Math.log10(d.nstar)) >= 5 ? 1 : 0);
+
+    // 颜色图例
+    const legendColor = g.append('g').attr('transform', `translate(${innerWidth - 180}, 10)`);
+    const defs = svg.append('defs');
+    const grad = defs.append('linearGradient').attr('id', 'colorLegendGrad').attr('x1', 0).attr('y1', 1).attr('x2', 0).attr('y2', 0);
+    [
+        { offset: '0%', color: colorScale(maxAge) },
+        { offset: '50%', color: colorScale((maxAge + minAge) / 2) },
+        { offset: '100%', color: colorScale(minAge) }
+    ].forEach(s => {
+        grad.append('stop').attr('offset', s.offset).attr('stop-color', s.color);
+    });
+    legendColor.append('rect').attr('width', 16).attr('height', 120).attr('rx', 4).style('fill', 'url(#colorLegendGrad)');
+    legendColor.append('text').attr('x', 20).attr('y', -4).style('font-size', '9px').style('fill', '#4a5f7a')
+        .style('font-weight', '500').style('font-family', 'Inter, sans-serif').text('Age (log)');
+    legendColor.append('text').attr('x', 20).attr('y', 14).style('font-size', '8px').style('fill', '#6a8aaa')
+        .style('font-family', 'Inter, sans-serif').text('young');
+    legendColor.append('text').attr('x', 20).attr('y', 118).style('font-size', '8px').style('fill', '#6a8aaa')
+        .style('font-family', 'Inter, sans-serif').text('old');
+
+    // 大小图例
+    const legendSize = g.append('g').attr('transform', `translate(20, ${innerHeight - 80})`);
+    legendSize.append('text').attr('x', 0).attr('y', -6).style('font-size', '9px').style('fill', '#4a5f7a')
+        .style('font-weight', '500').style('font-family', 'Inter, sans-serif').text('log10(Nstar)');
+    const logVals = [d3.quantile(data, 0.1, d => Math.log10(d.nstar)),
+                     d3.quantile(data, 0.5, d => Math.log10(d.nstar)),
+                     d3.quantile(data, 0.9, d => Math.log10(d.nstar))];
+    logVals.forEach((val, i) => {
+        const x = i * 45;
+        const r = radiusScale(val);
+        legendSize.append('circle').attr('cx', x + 12).attr('cy', 14).attr('r', r)
+            .attr('fill', '#6c2bd9').attr('fill-opacity', 0.5).attr('stroke', '#6c2bd9').attr('stroke-width', 0.5);
+        legendSize.append('text').attr('x', x + 12).attr('y', 32).style('font-size', '8px')
+            .style('fill', '#4a5f7a').style('font-family', 'Inter, sans-serif').style('text-anchor', 'middle')
+            .text(val.toFixed(1));
+    });
+}
+
+// ---------- 更新数据和图表 ----------
+function updateAll() {
+    currentData = applyFilters(allData);
+    updateStats(currentData);
+    drawChart(currentData, showVel);
+}
+
+// =====================================================================
+// 加载数据
+// =====================================================================
+d3.csv("snake_s3.csv").then(function(csvData) {
+    // 解析数据（新增 grade）
+    allData = csvData.map(d => ({
         snake: +d.Snake,
         nstar: +d.Nstar,
         nnode: +d.Nnode,
@@ -619,375 +992,38 @@ d3.csv("snake_s2.csv").then(function(csvData) {
         age: +d.Loga_part_p50,
         parallax: +d.parallax_median,
         pml: +d.pml_lsr_median,
-        pmb: +d.pmb_lsr_median
-    })).filter(d => !isNaN(d.snake) && !isNaN(d.age) && !isNaN(d.l) && !isNaN(d.b) && !isNaN(d.parallax));
+        pmb: +d.pmb_lsr_median,
+        grade: d.sri_final_grade.trim().toLowerCase() // 统一小写
+    })).filter(d => !isNaN(d.snake) && !isNaN(d.age) && !isNaN(d.l) && !isNaN(d.b) && !isNaN(d.parallax) && d.grade);
 
-    if (rawData.length === 0) {
+    if (allData.length === 0) {
         document.getElementById('filterInfo').textContent = 'No data loaded. Check CSV file.';
         return;
     }
 
     // 更新头部显示总数
-    document.getElementById('totalSnakesHeader').textContent = rawData.length;
+    document.getElementById('totalSnakesHeader').textContent = allData.length;
 
-    // =====================================================================
-    // MAIN VISUALIZATION
-    // =====================================================================
+    // 初始化显示
+    updateAll();
 
-    const allData = rawData;
-    const minAge = d3.min(allData, d => d.age);
-    const maxAge = d3.max(allData, d => d.age);
-    let currentData = allData.slice();
-
-    // 更新统计信息
-    function updateStats(data) {
-        document.getElementById('totalSnakes').textContent = data.length;
-        const totalNodes = data.reduce((sum, d) => sum + d.nnode, 0);
-        document.getElementById('totalNodes').textContent = totalNodes;
-        document.getElementById('avgNodes').textContent = (totalNodes / data.length).toFixed(1);
-        document.getElementById('ageRange').textContent = minAge.toFixed(2) + ' – ' + maxAge.toFixed(2);
-
-        const totalStars = data.reduce((sum, d) => sum + d.nstar, 0);
-        document.getElementById('totalStars').textContent = totalStars.toLocaleString();
-        document.getElementById('avgStars').textContent = (totalStars / data.length).toFixed(1);
-
-        const filterInfo = document.getElementById('filterInfo');
-        filterInfo.innerHTML = 'Showing <strong>' + data.length + '</strong> Snakes';
-        const filteredCount = document.getElementById('filteredCount');
-        if (data.length === allData.length) {
-            filteredCount.style.display = 'none';
-        } else {
-            filteredCount.style.display = 'block';
-            document.getElementById('filteredN').textContent = data.length;
-        }
-    }
-
-    // ---------- 计算每个点的速度 (l,b 方向) ----------
-    function computeVelocities(data) {
-        const factor = 4.74; // 转换因子
-        return data.map(d => {
-            let v_l = 0, v_b = 0, v_mag = 0;
-            if (d.parallax > 0) {
-                const dist = 1.0 / d.parallax; // pc
-                v_l = factor * d.pml * dist;
-                v_b = factor * d.pmb * dist;
-                v_mag = Math.sqrt(v_l*v_l + v_b*v_b);
-            }
-            return { ...d, v_l, v_b, v_mag };
-        });
-    }
-
-    // ---------- 图表渲染 ----------
-    function drawChart(data, showVelocities) {
-        d3.select('#d3Chart').html('');
-
-        const container = document.getElementById('d3Chart');
-        const rect = container.getBoundingClientRect();
-        const width = rect.width || 1200;
-        const margin = { top: 50, right: 40, bottom: 60, left: 60 };
-        const innerWidth = width - margin.left - margin.right;
-        const height = Math.max(500, innerWidth * 0.55);
-        const innerHeight = height - margin.top - margin.bottom;
-
-        if (data.length === 0) {
-            d3.select('#d3Chart')
-                .append('div')
-                .attr('class', 'no-data-msg')
-                .html('<i class="fas fa-info-circle"></i>No snakes match the selected age range.');
-            return;
-        }
-
-        // --- 计算速度数据 ---
-        const velData = computeVelocities(data);
-
-        // --- 坐标轴 ---
-        const xScale = d3.scaleLinear().domain(xDomain).range([0, innerWidth]);
-        const yScale = d3.scaleLinear().domain(yDomain).range([innerHeight, 0]);
-
-        const svg = d3.select('#d3Chart')
-            .append('svg')
-            .attr('width', width)
-            .attr('height', height)
-            .style('background', 'transparent');
-
-        // 双击重置视图
-        svg.on('dblclick', function() {
-            xDomain = [0, 360];
-            yDomain = [-80, 80];
-            drawChart(currentData, showVel);
-        });
-
-        const g = svg.append('g')
-            .attr('transform', `translate(${margin.left},${margin.top})`);
-
-        // 坐标轴
-        const xAxis = d3.axisBottom(xScale).tickValues(d3.range(0, 361, 45)).tickFormat(d => d + '°');
-        g.append('g').attr('class', 'axis').attr('transform', `translate(0,${innerHeight})`).call(xAxis)
-            .style('font-size', '11px').style('font-family', 'Inter, sans-serif').style('color', '#4a5f7a');
-
-        const yAxis = d3.axisLeft(yScale).tickValues(d3.range(-80, 81, 20)).tickFormat(d => d + '°');
-        g.append('g').attr('class', 'axis').call(yAxis)
-            .style('font-size', '11px').style('font-family', 'Inter, sans-serif').style('color', '#4a5f7a');
-
-        // 网格
-        g.append('g').attr('class', 'grid')
-            .call(d3.axisLeft(yScale).tickValues(d3.range(-80, 81, 20)).tickSize(-innerWidth).tickFormat(''))
-            .style('color', 'rgba(108,43,217,0.05)').style('stroke-dasharray', '4,4');
-        g.append('g').attr('class', 'grid').attr('transform', `translate(0,${innerHeight})`)
-            .call(d3.axisBottom(xScale).tickValues(d3.range(0, 361, 45)).tickSize(-innerHeight).tickFormat(''))
-            .style('color', 'rgba(108,43,217,0.05)').style('stroke-dasharray', '4,4');
-
-        // 轴标签
-        g.append('text').attr('x', innerWidth / 2).attr('y', innerHeight + 45)
-            .attr('text-anchor', 'middle').style('font-size', '13px').style('font-weight', '600')
-            .style('fill', '#3a4f6a').style('font-family', 'Inter, sans-serif').text('Galactic Longitude l (deg)');
-        g.append('text').attr('x', -40).attr('y', 10).attr('text-anchor', 'middle')
-            .style('font-size', '13px').style('font-weight', '600').style('fill', '#3a4f6a')
-            .style('font-family', 'Inter, sans-serif').text('b (deg)').attr('transform', 'rotate(-90)');
-
-        // ========== BRUSH ==========
-        const brush = d3.brush()
-            .extent([[0, 0], [innerWidth, innerHeight]])
-            .on('end', function(event) {
-                if (!event.selection) return;
-                const [[x0, y0], [x1, y1]] = event.selection;
-                if (Math.abs(x1 - x0) < 20 || Math.abs(y1 - y0) < 20) return;
-
-                const newX = [xScale.invert(x0), xScale.invert(x1)].sort((a,b) => a - b);
-                const newY = [yScale.invert(y1), yScale.invert(y0)].sort((a,b) => a - b);
-
-                xDomain = newX;
-                yDomain = newY;
-                drawChart(currentData, showVel);
-            });
-
-        const brushG = g.append('g')
-            .attr('class', 'brush')
-            .call(brush);
-
-        brushG.selectAll('.overlay')
-            .style('fill', 'none')
-            .style('pointer-events', 'all');
-        brushG.selectAll('.selection')
-            .style('fill', 'rgba(108,43,217,0.1)')
-            .style('stroke', '#6c2bd9')
-            .style('stroke-width', '1.5px')
-            .style('stroke-dasharray', '4,2');
-
-        // ========== 速度箭头 (先绘制，让点覆盖) ==========
-        if (showVelocities) {
-            // 计算中位速度模（仅考虑有视差的点）
-            const validVel = velData.filter(d => d.parallax > 0 && d.v_mag > 0);
-            if (validVel.length > 0) {
-                const maxV = d3.median(validVel, d => d.v_mag);
-                const maxArrowLen = 25; // 像素， 原为 25，放大至 70（约 2.8 倍）
-                const scale = maxArrowLen / maxV; // 像素/(km/s)
-
-                // 显示图例
-                document.getElementById('velocityLegend').style.display = 'flex';
-                document.getElementById('velScaleLabel').textContent = maxV.toFixed(1);
-                document.getElementById('velHint').style.display = 'inline';
-
-                // 定义 marker
-                const defs = svg.append('defs');
-                defs.append('marker')
-                    .attr('id', 'arrowhead')
-                    .attr('markerWidth', 10)
-                    .attr('markerHeight', 8)
-                    .attr('refX', 7)
-                    .attr('refY', 3)
-                    .attr('orient', 'auto')
-                    .append('polygon')
-                    .attr('points', '0 0, 8 3, 0 6')
-                    .attr('fill', '#e74c3c')
-                    .attr('stroke', 'none');
-
-                // 箭头组
-                const arrowGroup = g.append('g').attr('class', 'velocity-arrows');
-
-                validVel.forEach(d => {
-                    const cx = xScale(d.l);
-                    const cy = yScale(d.b);
-                    const dx_px = scale * d.v_l;
-                    const dy_px = -scale * d.v_b; // b 轴正向对应 y 减小
-                    const endX = cx + dx_px;
-                    const endY = cy + dy_px;
-
-                    arrowGroup.append('line')
-                        .attr('x1', cx)
-                        .attr('y1', cy)
-                        .attr('x2', endX)
-                        .attr('y2', endY)
-                        .attr('stroke', '#e74c3c')
-                        .attr('stroke-width', 2.0) // 原为 1.5
-                        .attr('stroke-opacity', 0.7)
-                        .attr('marker-end', 'url(#arrowhead)');
-                });
-            } else {
-                // 没有有效速度数据，隐藏图例
-                document.getElementById('velocityLegend').style.display = 'none';
-                document.getElementById('velHint').style.display = 'none';
-            }
-        } else {
-            document.getElementById('velocityLegend').style.display = 'none';
-            document.getElementById('velHint').style.display = 'none';
-        }
-
-        // ========== 绘制点 ==========
-        const colorScale = d3.scaleSequential(d3.interpolateTurbo)
-            .domain([minAge, maxAge]);
-
-        const minLogNstar = d3.min(data, d => Math.log10(d.nstar));
-        const maxLogNstar = d3.max(data, d => Math.log10(d.nstar));
-        const radiusScale = d3.scaleSqrt()
-            .domain([minLogNstar, maxLogNstar])
-            .range([3, 15]);
-
-        const tooltip = d3.select('#tooltip');
-
-        const points = g.selectAll('g.snake-group')
-            .data(data)
-            .enter()
-            .append('a')
-            .attr('class', 'snake-link')
-            .attr('href', d => d.snake + '.html')
-            .attr('target', '_blank')
-            .on('mouseover', function(event, d) {
-                d3.select(this).select('circle')
-                    .transition().duration(150)
-                    .attr('stroke', '#1a1a3a')
-                    .attr('stroke-width', 2.5);
-                tooltip
-                    .classed('visible', true)
-                    .html(`
-                        <div><span class="tt-label">Snake</span> <span class="tt-value">${d.snake}</span></div>
-                        <div><span class="tt-label">N<sub>node</sub></span> <span class="tt-value">${d.nnode}</span></div>
-                        <div><span class="tt-label">N<sub>star</sub></span> <span class="tt-value">${d.nstar.toLocaleString()}</span></div>
-                        <div><span class="tt-label">Age (log)</span> <span class="tt-value">${d.age.toFixed(2)}</span></div>
-                        <div><span class="tt-label">l</span> <span class="tt-value">${d.l.toFixed(2)}°</span> &nbsp; <span class="tt-label">b</span> <span class="tt-value">${d.b.toFixed(2)}°</span></div>
-                        <div><span class="tt-label">v<sub>l</sub></span> <span class="tt-value">${d.pml ? (4.74 * d.pml / d.parallax).toFixed(1) : '—'} km/s</span></div>
-                        <div><span class="tt-label">v<sub>b</sub></span> <span class="tt-value">${d.pmb ? (4.74 * d.pmb / d.parallax).toFixed(1) : '—'} km/s</span></div>
-                    `)
-                    .style('left', (event.clientX + 14) + 'px')
-                    .style('top', (event.clientY - 10) + 'px');
-            })
-            .on('mousemove', function(event) {
-                tooltip
-                    .style('left', (event.clientX + 14) + 'px')
-                    .style('top', (event.clientY - 10) + 'px');
-            })
-            .on('mouseout', function() {
-                d3.select(this).select('circle')
-                    .transition().duration(150)
-                    .attr('stroke', 'none')
-                    .attr('stroke-width', 0);
-                tooltip.classed('visible', false);
-            });
-
-        points.append('circle')
-            .attr('cx', d => xScale(d.l))
-            .attr('cy', d => yScale(d.b))
-            .attr('r', d => radiusScale(Math.log10(d.nstar)))
-            .attr('fill', d => colorScale(d.age))
-            .attr('fill-opacity', 0.92)
-            .attr('stroke', 'rgba(255,255,255,0.2)')
-            .attr('stroke-width', 0.5);
-
-        points.append('text')
-            .attr('class', 'snake-label')
-            .attr('x', d => xScale(d.l))
-            .attr('y', d => yScale(d.b))
-            .attr('font-size', d => Math.max(5, Math.min(10, radiusScale(Math.log10(d.nstar)) * 0.7)))
-            .attr('fill', '#fff')
-            .attr('font-weight', '700')
-            .attr('text-anchor', 'middle')
-            .attr('dominant-baseline', 'central')
-            .style('pointer-events', 'none')
-            .style('user-select', 'none')
-            .text(d => d.snake)
-            .style('opacity', d => radiusScale(Math.log10(d.nstar)) >= 5 ? 1 : 0);
-
-        // 颜色图例
-        const legendColor = g.append('g').attr('transform', `translate(${innerWidth - 180}, 10)`);
-        const defs = svg.append('defs');
-        const grad = defs.append('linearGradient').attr('id', 'colorLegendGrad').attr('x1', 0).attr('y1', 1).attr('x2', 0).attr('y2', 0);
-        [
-            { offset: '0%', color: colorScale(maxAge) },
-            { offset: '50%', color: colorScale((maxAge + minAge) / 2) },
-            { offset: '100%', color: colorScale(minAge) }
-        ].forEach(s => {
-            grad.append('stop').attr('offset', s.offset).attr('stop-color', s.color);
-        });
-        legendColor.append('rect').attr('width', 16).attr('height', 120).attr('rx', 4).style('fill', 'url(#colorLegendGrad)');
-        legendColor.append('text').attr('x', 20).attr('y', -4).style('font-size', '9px').style('fill', '#4a5f7a')
-            .style('font-weight', '500').style('font-family', 'Inter, sans-serif').text('Age (log)');
-        legendColor.append('text').attr('x', 20).attr('y', 14).style('font-size', '8px').style('fill', '#6a8aaa')
-            .style('font-family', 'Inter, sans-serif').text('young');
-        legendColor.append('text').attr('x', 20).attr('y', 118).style('font-size', '8px').style('fill', '#6a8aaa')
-            .style('font-family', 'Inter, sans-serif').text('old');
-
-        // 大小图例
-        const legendSize = g.append('g').attr('transform', `translate(20, ${innerHeight - 80})`);
-        legendSize.append('text').attr('x', 0).attr('y', -6).style('font-size', '9px').style('fill', '#4a5f7a')
-            .style('font-weight', '500').style('font-family', 'Inter, sans-serif').text('log10(Nstar)');
-        const logVals = [d3.quantile(data, 0.1, d => Math.log10(d.nstar)),
-                         d3.quantile(data, 0.5, d => Math.log10(d.nstar)),
-                         d3.quantile(data, 0.9, d => Math.log10(d.nstar))];
-        logVals.forEach((val, i) => {
-            const x = i * 45;
-            const r = radiusScale(val);
-            legendSize.append('circle').attr('cx', x + 12).attr('cy', 14).attr('r', r)
-                .attr('fill', '#6c2bd9').attr('fill-opacity', 0.5).attr('stroke', '#6c2bd9').attr('stroke-width', 0.5);
-            legendSize.append('text').attr('x', x + 12).attr('y', 32).style('font-size', '8px')
-                .style('fill', '#4a5f7a').style('font-family', 'Inter, sans-serif').style('text-anchor', 'middle')
-                .text(val.toFixed(1));
-        });
-    }
-
-    // ---------- 筛选逻辑 ----------
-    const ageFilter = document.getElementById('ageFilter');
-    ageFilter.addEventListener('change', function() {
-        const val = this.value;
-        if (val === 'all') {
-            currentData = allData.slice();
-        } else {
-            const ranges = {
-                'young': [null, 7.0],
-                '7.0-7.4': [7.0, 7.4],
-                '7.4-7.8': [7.4, 7.8],
-                '7.8-8.2': [7.8, 8.2],
-                '8.2-8.6': [8.2, 8.6],
-                '8.6-9.0': [8.6, 9.0],
-                '9.0-9.4': [9.0, 9.4],
-                'old': [9.4, null]
-            };
-            const range = ranges[val];
-            if (range) {
-                currentData = allData.filter(d => {
-                    if (range[0] === null) return d.age < range[1];
-                    if (range[1] === null) return d.age >= range[0];
-                    return d.age >= range[0] && d.age < range[1];
-                });
-            } else {
-                currentData = allData.slice();
-            }
-        }
+    // ---------- 事件监听 ----------
+    ageFilterEl.addEventListener('change', function() {
         xDomain = [0, 360];
         yDomain = [-80, 80];
-        updateStats(currentData);
-        drawChart(currentData, showVel);
+        updateAll();
     });
 
-    // ---------- 速度显示切换 ----------
-    const velCheckbox = document.getElementById('showVelocities');
+    gradeFilterEl.addEventListener('change', function() {
+        xDomain = [0, 360];
+        yDomain = [-80, 80];
+        updateAll();
+    });
+
     velCheckbox.addEventListener('change', function() {
         showVel = this.checked;
         drawChart(currentData, showVel);
     });
-
-    // ---------- 初始渲染 ----------
-    updateStats(allData);
-    drawChart(allData, false); // 默认不显示速度
 
     // ---------- 窗口自适应 ----------
     let resizeTimer;
@@ -999,10 +1035,10 @@ d3.csv("snake_s2.csv").then(function(csvData) {
     });
 
     console.log('🐍 Snake Spatial Distribution loaded!');
-    console.log(`📊 ${allData.length} snakes. Age range: ${minAge.toFixed(2)} - ${maxAge.toFixed(2)}`);
+    console.log(`📊 ${allData.length} snakes. Age range: ${d3.min(allData, d => d.age).toFixed(2)} - ${d3.max(allData, d => d.age).toFixed(2)}`);
 }).catch(function(error) {
     console.error('Error loading CSV:', error);
-    document.getElementById('filterInfo').textContent = 'Error loading data. Please ensure snake_s2.csv is in the same directory.';
+    document.getElementById('filterInfo').textContent = 'Error loading data. Please ensure snake_s3.csv is in the same directory.';
     document.getElementById('totalSnakesHeader').textContent = 'Error';
 });
 </script>
