@@ -393,9 +393,6 @@
             const distCenter = Math.sqrt(dx*dx + dy*dy);
 
             // 物理机制参数调整
-            // g 波段：蓝星主导，反射波浪小但可见（增大到0.025），深食极深（0.9）
-            // r 波段：中等
-            // i 波段：红外，反射波浪极大（0.08），深食相对较浅（0.55）
             const reflAmp = { g: 0.025, r: 0.05, i: 0.08 };
             const deepDepth = { g: 0.9, r: 0.75, i: 0.55 };
 
@@ -413,7 +410,6 @@
 
             let flux = {};
             for (let band of ['g', 'r', 'i']) {
-                // 反射波形
                 let base = 1.0 - Math.cos(p_shifted) * reflAmp[band];
                 let eclipse = 0;
                 
@@ -421,7 +417,6 @@
                     if (isDeepEclipse) {
                         eclipse = deepDepth[band] * overlapRatio;
                     } else {
-                        // 浅食：极小化
                         eclipse = 0.005 * overlapRatio;
                     }
                 }
@@ -503,18 +498,46 @@
             lcCtx.clearRect(0, 0, w, h);
             
             const paddingTop = h * 0.15;
-            const paddingBottom = h * 0.1;
+            const paddingBottom = h * 0.15; // 增加底部留白，为了让文字更清楚
             const graphHeight = h - paddingTop - paddingBottom;
 
+            // 绘制网格
             lcCtx.strokeStyle = '#222'; lcCtx.lineWidth = 1; lcCtx.beginPath();
             for(let i=0; i<=4; i++) { let y = paddingTop + i * (graphHeight/4); lcCtx.moveTo(0, y); lcCtx.lineTo(w, y); }
             for(let p=0; p<=2; p+=0.5) { let x = (p/2) * w; lcCtx.moveTo(x, paddingTop); lcCtx.lineTo(x, h - paddingBottom); }
             lcCtx.stroke();
 
-            lcCtx.fillStyle = '#666'; lcCtx.font = '10px monospace';
-            lcCtx.fillText('0.0', 5, h - 2); lcCtx.fillText('0.5', w*0.25, h - 2); lcCtx.fillText('1.0', w*0.5 - 10, h - 2); lcCtx.fillText('1.5', w*0.75, h - 2); lcCtx.fillText('2.0', w - 25, h - 2);
+            // 绘制底轴实线
+            lcCtx.beginPath();
+            lcCtx.strokeStyle = '#555';
+            lcCtx.lineWidth = 1.5;
+            lcCtx.moveTo(0, h - paddingBottom);
+            lcCtx.lineTo(w, h - paddingBottom);
+            lcCtx.stroke();
+
+            // 绘制刻度文字（提亮并居中）
+            lcCtx.fillStyle = '#ddd'; 
+            lcCtx.font = '11px monospace';
+            lcCtx.textAlign = 'center'; 
             
-            // 使用 g(绿), r(红), i(紫) 来区分
+            const ticks = [0.0, 0.5, 1.0, 1.5, 2.0];
+            ticks.forEach(tick => {
+                let x = (tick / 2) * w;
+                // 防止边缘文字被切掉
+                if (tick === 0.0) x = 15;
+                if (tick === 2.0) x = w - 15;
+                
+                lcCtx.fillText(tick.toFixed(1), x, h - 4);
+                
+                // 画底部刻度小短线
+                lcCtx.beginPath();
+                lcCtx.strokeStyle = '#555';
+                lcCtx.moveTo((tick / 2) * w, h - paddingBottom - 3);
+                lcCtx.lineTo((tick / 2) * w, h - paddingBottom + 3);
+                lcCtx.stroke();
+            });
+            lcCtx.textAlign = 'left'; // 恢复默认
+            
             const bands = [
                 { key: 'g', color: '#33ff33' },
                 { key: 'r', color: '#ff3333' },
