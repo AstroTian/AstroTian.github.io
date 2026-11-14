@@ -52,11 +52,11 @@
             border-radius: 8px;
             border: 1px solid #444;
             pointer-events: none;
-            font-size: 12px; /* 稍微缩小字体以容纳更多参数 */
+            font-size: 12px;
             line-height: 1.5;
             z-index: 10;
             box-shadow: 0 4px 15px rgba(0,0,0,0.8);
-            width: 350px; /* 稍微加宽面板 */
+            width: 350px;
             backdrop-filter: blur(5px);
         }
         .param-title { color: #fff; font-weight: bold; font-size: 14px; margin-bottom: 6px; border-bottom: 1px solid #444; padding-bottom: 4px; }
@@ -66,7 +66,6 @@
         .secondary-color { color: #ff4400; font-weight: bold; }
         .highlight-color { color: #ffaa00; font-weight: bold; }
         
-        /* 科学注脚样式 */
         .visual-note {
             margin-top: 8px;
             padding-top: 6px;
@@ -94,6 +93,9 @@
             font-weight: bold; 
             color: #ccc; 
             border-bottom: 1px solid #333; 
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
         .canvas-wrapper { flex: 1; position: relative; background-color: #0a0a0a; }
         canvas.sub-canvas { display: block; width: 100%; height: 100%; }
@@ -113,9 +115,13 @@
             text-align: center; 
             pointer-events: none; 
             z-index: 20; 
-            width: 88%; 
+            width: 90%; 
             box-shadow: 0 2px 10px rgba(0,0,0,0.5);
         }
+
+        .legend { font-size: 11px; font-weight: normal; display: flex; gap: 10px; }
+        .legend-item { display: flex; align-items: center; gap: 4px; }
+        .legend-color { width: 12px; height: 2px; display: inline-block; }
 
         #global-controls { 
             height: 80px; 
@@ -171,7 +177,6 @@
                 <div id="info-panel">
                     <div class="param-title">PCEB System Parameters</div>
                     
-                    <!-- 轨道参数 -->
                     <div class="param-subtitle">Orbital Parameters</div>
                     <div class="param-row"><span>Period (P):</span> <span>0.50909 days</span></div>
                     <div class="param-row"><span>Inclination (i):</span> <span>82.585&deg;</span></div>
@@ -179,7 +184,6 @@
                     <div class="param-row"><span>Semi-major Axis (a):</span> <span>2.5841 R&#9737;</span></div>
                     <div class="param-row"><span>Orbital Velocity (v<sub>orb</sub>):</span> <span>256.8 km s<sup>-1</sup></span></div>
 
-                    <!-- 主星参数 -->
                     <div class="param-subtitle primary-color">Primary (sdO / Proto-WD)</div>
                     <div class="param-row"><span>Mass (M<sub>1</sub>):</span> <span>0.596 M&#9737;</span></div>
                     <div class="param-row"><span>Radius (R<sub>1</sub>):</span> <span>0.03618 R&#9737; (~4 R<sub>&#8853;</sub>)</span></div>
@@ -187,7 +191,6 @@
                     <div class="param-row"><span>Surface Gravity (log g<sub>1</sub>):</span> <span>7.095 dex</span></div>
                     <div class="param-row"><span>RV Semi-amplitude (K<sub>1</sub>):</span> <span>84.9 km s<sup>-1</sup></span></div>
 
-                    <!-- 伴星参数 -->
                     <div class="param-subtitle secondary-color">Secondary (M Dwarf)</div>
                     <div class="param-row"><span>Mass (M<sub>2</sub>):</span> <span>0.298 M&#9737;</span></div>
                     <div class="param-row"><span>Radius (R<sub>2</sub>):</span> <span>0.3795 R&#9737;</span></div>
@@ -195,12 +198,10 @@
                     <div class="param-row"><span>Surface Gravity (log g<sub>2</sub>):</span> <span>4.753 dex</span></div>
                     <div class="param-row"><span>RV Semi-amplitude (K<sub>2</sub>):</span> <span>169.5 km s<sup>-1</sup></span></div>
 
-                    <!-- 洛希瓣参数 -->
                     <div class="param-subtitle highlight-color">Roche Lobe</div>
                     <div class="param-row"><span>Lobe Radius (R<sub>L,2</sub>):</span> <span>0.8287 R&#9737;</span></div>
                     <div class="param-row"><span>Filling Factor (f<sub>2</sub>):</span> <span>0.458</span></div>
                     
-                    <!-- 科学注脚 -->
                     <div class="visual-note">
                         Note: The visual luminosity and irradiation of the secondary are exaggerated for clarity.<br>
                         In reality, its bolometric luminosity is ~2000 times lower than the primary.
@@ -215,7 +216,14 @@
                 <div class="canvas-wrapper"><canvas id="eclipse-canvas" class="sub-canvas"></canvas></div>
             </div>
             <div class="sub-panel">
-                <div class="panel-header">Light Curve (Phase 0 to 2)</div>
+                <div class="panel-header">
+                    <span>Multi-band Light Curve</span>
+                    <div class="legend">
+                        <div class="legend-item"><span class="legend-color" style="background:#33ff33;"></span>g-band</div>
+                        <div class="legend-item"><span class="legend-color" style="background:#ff3333;"></span>r-band</div>
+                        <div class="legend-item"><span class="legend-color" style="background:#aa77ff;"></span>i-band</div>
+                    </div>
+                </div>
                 <div class="canvas-wrapper"><canvas id="lc-canvas" class="sub-canvas"></canvas></div>
                 <div id="physics-label">Awaiting observation...</div>
             </div>
@@ -365,6 +373,7 @@
         window.addEventListener('resize', resize2DCanvases);
         resize2DCanvases();
 
+        // 核心物理函数：返回 g, r, i 三个波段的通量
         function calcFlux(p_rad) {
             const cosI = Math.cos(THREE.MathUtils.degToRad(i_deg));
             const sinI = Math.sin(THREE.MathUtils.degToRad(i_deg));
@@ -383,22 +392,40 @@
             const dy = y1 - y2;
             const distCenter = Math.sqrt(dx*dx + dy*dy);
 
-            let baseFlux = 1.0 - Math.cos(p_shifted) * 0.06; 
-            let flux = baseFlux;
-            
+            // 物理机制参数调整
+            // g 波段：蓝星主导，反射波浪小但可见（增大到0.025），深食极深（0.9）
+            // r 波段：中等
+            // i 波段：红外，反射波浪极大（0.08），深食相对较浅（0.55）
+            const reflAmp = { g: 0.025, r: 0.05, i: 0.08 };
+            const deepDepth = { g: 0.9, r: 0.75, i: 0.55 };
+
+            let overlapRatio = 0;
+            let isDeepEclipse = false;
+
             if (distCenter < radius1 + radius2) {
-                let overlapRatio = 0;
                 if (distCenter < Math.abs(radius2 - radius1)) {
                     overlapRatio = 1.0;
                 } else {
                     overlapRatio = (radius1 + radius2 - distCenter) / (2 * radius1);
                 }
+                if (z2 > z1) isDeepEclipse = true;
+            }
+
+            let flux = {};
+            for (let band of ['g', 'r', 'i']) {
+                // 反射波形
+                let base = 1.0 - Math.cos(p_shifted) * reflAmp[band];
+                let eclipse = 0;
                 
-                if (z2 > z1) {
-                    flux -= 0.9 * overlapRatio;
-                } else {
-                    flux -= 0.005 * overlapRatio; 
+                if (overlapRatio > 0) {
+                    if (isDeepEclipse) {
+                        eclipse = deepDepth[band] * overlapRatio;
+                    } else {
+                        // 浅食：极小化
+                        eclipse = 0.005 * overlapRatio;
+                    }
                 }
+                flux[band] = base - eclipse;
             }
             return flux;
         }
@@ -475,55 +502,67 @@
             const w = lcCanvas.clientWidth, h = lcCanvas.clientHeight;
             lcCtx.clearRect(0, 0, w, h);
             
+            const paddingTop = h * 0.15;
+            const paddingBottom = h * 0.1;
+            const graphHeight = h - paddingTop - paddingBottom;
+
             lcCtx.strokeStyle = '#222'; lcCtx.lineWidth = 1; lcCtx.beginPath();
-            for(let i=0; i<=4; i++) { let y = h * (0.15 + i*0.18); lcCtx.moveTo(0, y); lcCtx.lineTo(w, y); }
-            for(let p=0; p<=2; p+=0.5) { let x = (p/2) * w; lcCtx.moveTo(x, 0); lcCtx.lineTo(x, h); }
+            for(let i=0; i<=4; i++) { let y = paddingTop + i * (graphHeight/4); lcCtx.moveTo(0, y); lcCtx.lineTo(w, y); }
+            for(let p=0; p<=2; p+=0.5) { let x = (p/2) * w; lcCtx.moveTo(x, paddingTop); lcCtx.lineTo(x, h - paddingBottom); }
             lcCtx.stroke();
 
             lcCtx.fillStyle = '#666'; lcCtx.font = '10px monospace';
-            lcCtx.fillText('0.0', 5, h - 5); lcCtx.fillText('0.5', w*0.25, h - 5); lcCtx.fillText('1.0', w*0.5 - 10, h - 5); lcCtx.fillText('1.5', w*0.75, h - 5); lcCtx.fillText('2.0', w - 25, h - 5);
+            lcCtx.fillText('0.0', 5, h - 2); lcCtx.fillText('0.5', w*0.25, h - 2); lcCtx.fillText('1.0', w*0.5 - 10, h - 2); lcCtx.fillText('1.5', w*0.75, h - 2); lcCtx.fillText('2.0', w - 25, h - 2);
             
-            lcCtx.beginPath(); lcCtx.strokeStyle = 'rgba(255, 170, 0, 0.4)'; lcCtx.setLineDash([3, 3]); lcCtx.lineWidth = 1.5;
-            for (let i = 0; i <= 400; i++) {
-                let p = (i / 400) * 2;
-                let p_rad = p * Math.PI * 2;
-                let p_shifted = p_rad + Math.PI;
-                let baseFlux = 1.0 - Math.cos(p_shifted) * 0.06;
-                let x = (p / 2) * w, y = h - (baseFlux * h * 0.75 + h * 0.2);
-                if (i === 0) lcCtx.moveTo(x, y); else lcCtx.lineTo(x, y);
-            }
-            lcCtx.stroke(); lcCtx.setLineDash([]); 
-            
-            lcCtx.beginPath(); lcCtx.strokeStyle = '#00ffcc'; lcCtx.lineWidth = 2; lcCtx.lineJoin = 'round';
-            for (let i = 0; i <= 400; i++) {
-                let p = (i / 400) * 2;
-                let flux = calcFlux(p * Math.PI * 2); 
-                let x = (p / 2) * w, y = h - (flux * h * 0.75 + h * 0.2);
-                if (i === 0) lcCtx.moveTo(x, y); else lcCtx.lineTo(x, y);
-            }
-            lcCtx.stroke();
+            // 使用 g(绿), r(红), i(紫) 来区分
+            const bands = [
+                { key: 'g', color: '#33ff33' },
+                { key: 'r', color: '#ff3333' },
+                { key: 'i', color: '#aa77ff' }
+            ];
 
+            // 画三条曲线
+            bands.forEach(band => {
+                lcCtx.beginPath();
+                lcCtx.strokeStyle = band.color;
+                lcCtx.lineWidth = 1.5;
+                lcCtx.lineJoin = 'round';
+                for (let i = 0; i <= 400; i++) {
+                    let p = (i / 400) * 2;
+                    let fluxObj = calcFlux(p * Math.PI * 2); 
+                    let flux = fluxObj[band.key];
+                    let x = (p / 2) * w;
+                    let y = paddingTop + (1 - flux) * graphHeight; 
+                    if (i === 0) lcCtx.moveTo(x, y); else lcCtx.lineTo(x, y);
+                }
+                lcCtx.stroke();
+            });
+
+            // 游标
             let p_cur = currentPhase / (Math.PI * 2); 
-            let currentFlux = calcFlux(currentPhase);
-            let cx = (p_cur / 2) * w, cy = h - (currentFlux * h * 0.75 + h * 0.2);
-
-            lcCtx.beginPath(); lcCtx.fillStyle = '#ffaa00'; lcCtx.arc(cx, cy, 5, 0, Math.PI * 2); lcCtx.fill();
+            let currentFluxObj = calcFlux(currentPhase);
+            let cx = (p_cur / 2) * w;
+            
+            bands.forEach(band => {
+                let cy = paddingTop + (1 - currentFluxObj[band.key]) * graphHeight;
+                lcCtx.beginPath();
+                lcCtx.fillStyle = band.color;
+                lcCtx.arc(cx, cy, 3.5, 0, Math.PI * 2);
+                lcCtx.fill();
+            });
             
             let singlePhase = (p_cur % 1 + 1) % 1;
             if (singlePhase > 0.48 && singlePhase < 0.52) {
-                physicsLabel.innerText = "Primary Eclipse (Deep Minimum): The red dwarf completely blocks the bright blue star.";
-                physicsLabel.style.borderColor = "#66ccff";
+                physicsLabel.innerText = "Primary Eclipse (0.5): Deepest in g-band. Shallower in i-band due to the red dwarf's own luminosity.";
+                physicsLabel.style.borderColor = "#33ff33";
             } else if (singlePhase < 0.02 || singlePhase > 0.98) {
-                physicsLabel.innerText = "Secondary Minimum: Tiny dip hidden by the bright reflection peak.";
-                physicsLabel.style.borderColor = "#88ddff";
+                physicsLabel.innerText = "Phase 0.0: Reflection peak. The heated face is visible, dominating the i-band variation.";
+                physicsLabel.style.borderColor = "#aa77ff";
             } else if (singlePhase > 0.22 && singlePhase < 0.28) {
-                physicsLabel.innerText = "Phase 0.25: The heated face of the red dwarf is fully visible, reaching maximum brightness.";
-                physicsLabel.style.borderColor = "#ffaa00";
-            } else if (singlePhase > 0.72 && singlePhase < 0.78) {
-                physicsLabel.innerText = "Phase 0.75: The irradiated face is again aligned with Earth, creating a second peak.";
-                physicsLabel.style.borderColor = "#ffaa00";
+                physicsLabel.innerText = "Phase 0.25: Maximum separation. i-band shows a much larger reflection wave amplitude than g-band.";
+                physicsLabel.style.borderColor = "#aa77ff";
             } else {
-                physicsLabel.innerText = "System orbiting: brightness modulated by reflection effect and geometry.";
+                physicsLabel.innerText = "System orbiting: g-band tracks the primary, while i-band reveals the irradiated secondary.";
                 physicsLabel.style.borderColor = "#555";
             }
         }
