@@ -328,12 +328,10 @@
         window.addEventListener('resize', resize2DCanvases);
         resize2DCanvases();
 
-        // 核心物理函数：平移相位，使得 0.5 处发生深食
         function calcFlux(p_rad) {
             const cosI = Math.cos(THREE.MathUtils.degToRad(i_deg));
             const sinI = Math.sin(THREE.MathUtils.degToRad(i_deg));
             
-            // 平移相位，使得重叠发生在 0.5 相位
             const p_shifted = p_rad + Math.PI;
 
             const x1 = Math.sin(p_shifted) * dist1;
@@ -348,7 +346,6 @@
             const dy = y1 - y2;
             const distCenter = Math.sqrt(dx*dx + dy*dy);
 
-            // 修正反射基线：深食（z2>z1，伴星在前）对应波谷，浅食（z1>z2）对应波峰
             let baseFlux = 1.0 - Math.cos(p_shifted) * 0.06; 
             let flux = baseFlux;
             
@@ -361,9 +358,11 @@
                 }
                 
                 if (z2 > z1) {
+                    // 深食：完全遮挡，叠加反射低谷，产生深坑
                     flux -= 0.9 * overlapRatio;
                 } else {
-                    flux -= 0.1 * overlapRatio;
+                    // 浅食：亮度极端悬殊，蓝星遮挡红矮星导致的通量下降微乎其微，几乎完全被反射亮峰掩盖
+                    flux -= 0.005 * overlapRatio; // 极小化这个坑
                 }
             }
             return flux;
@@ -480,7 +479,7 @@
                 physicsLabel.innerText = "Primary Eclipse (Deep Minimum): The red dwarf completely blocks the bright blue star.";
                 physicsLabel.style.borderColor = "#66ccff";
             } else if (singlePhase < 0.02 || singlePhase > 0.98) {
-                physicsLabel.innerText = "Secondary Eclipse (Shallow Minimum): The blue star blocks the red dwarf, slight dip.";
+                physicsLabel.innerText = "Secondary Minimum: Tiny dip hidden by the bright reflection peak (Blue star blocks red dwarf).";
                 physicsLabel.style.borderColor = "#88ddff";
             } else if (singlePhase > 0.22 && singlePhase < 0.28) {
                 physicsLabel.innerText = "Phase 0.25: The heated face of the red dwarf is fully visible, reaching maximum brightness.";
@@ -500,7 +499,6 @@
         const slider = document.getElementById('time-slider'), playBtn = document.getElementById('play-btn'), timeDisplay = document.getElementById('time-display');
 
         function updatePositions(p) {
-            // 同步 3D 模型的位移相位
             const p_shifted = p + Math.PI;
             
             star1.position.set(Math.sin(p_shifted) * dist1, 0, -Math.cos(p_shifted) * dist1);
@@ -543,7 +541,6 @@
 
         window.addEventListener('resize', resize2DCanvases);
 
-        // 启动
         updatePositions(0);
         animate();
     </script>
