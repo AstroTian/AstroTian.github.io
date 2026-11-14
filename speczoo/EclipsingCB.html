@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Binary System - Eclipsing PCEB</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background-color: #0a0a0a;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #ddd;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+        }
+        header { 
+            background-color: #151515; 
+            padding: 15px 0; 
+            text-align: center; 
+            border-bottom: 2px solid #333; 
+            flex-shrink: 0; 
+            z-index: 100; 
+        }
+        header h1 { 
+            font-size: 22px; 
+            font-weight: 600; 
+            letter-spacing: 2px; 
+            color: #fff; 
+        }
+        header h1 span { color: #66ccff; }
+        
+        #main-container { display: flex; flex: 1; overflow: hidden; }
+        
+        #left-panel { 
+            flex: 6.5; 
+            position: relative; 
+            border-right: 2px solid #333; 
+            background-color: #000; 
+        }
+        #canvas-container { width: 100%; height: 100%; position: relative; }
+        
+        /* Parameter Panel */
+        #info-panel {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            background: rgba(15, 15, 15, 0.85);
+            padding: 15px 18px;
+            border-radius: 8px;
+            border: 1px solid #444;
+            pointer-events: none;
+            font-size: 13px;
+            line-height: 1.6;
+            z-index: 10;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.8);
+            min-width: 310px;
+            backdrop-filter: blur(5px);
+        }
+        .param-title { 
+            color: #fff; 
+            font-weight: bold; 
+            font-size: 15px; 
+            margin-bottom: 8px; 
+            border-bottom: 1px solid #444; 
+            padding-bottom: 5px; 
+        }
+        .param-row { display: flex; justify-content: space-between; margin-bottom: 3px; }
+        .primary-color { color: #66ccff; font-weight: bold; }
+        .secondary-color { color: #ff4400; font-weight: bold; }
+        .highlight-color { color: #ffaa00; font-weight: bold; }
+
+        #right-panel { 
+            flex: 3.5; 
+            display: flex; 
+            flex-direction: column; 
+            background-color: #111; 
+            min-width: 350px; 
+        }
+        .sub-panel { 
+            flex: 1; 
+            position: relative; 
+            border-bottom: 2px solid #333; 
+            display: flex; 
+            flex-direction: column; 
+        }
+        .sub-panel:last-child { border-bottom: none; }
+        .panel-header { 
+            background-color: #222; 
+            padding: 10px 15px; 
+            font-size: 13px; 
+            font-weight: bold; 
+            color: #ccc; 
+            border-bottom: 1px solid #333; 
+            letter-spacing: 0.5px;
+        }
+        .canvas-wrapper { flex: 1; position: relative; background-color: #0a0a0a; }
+        canvas.sub-canvas { display: block; width: 100%; height: 100%; }
+        
+        #physics-label { 
+            position: absolute; 
+            bottom: 12px; 
+            left: 50%; 
+            transform: translateX(-50%); 
+            background: rgba(0, 0, 0, 0.85); 
+            border: 1px solid #66ccff; 
+            color: #fff; 
+            padding: 8px 15px; 
+            border-radius: 20px; 
+            font-size: 12px; 
+            font-weight: bold; 
+            text-align: center; 
+            pointer-events: none; 
+            z-index: 20; 
+            width: 88%; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }
+
+        #global-controls { 
+            height: 80px; 
+            background-color: #151515; 
+            border-top: 2px solid #333; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            gap: 30px; 
+            flex-shrink: 0; 
+        }
+        .control-group { display: flex; align-items: center; gap: 15px; }
+        button { 
+            background: #333; 
+            color: white; 
+            border: 1px solid #555; 
+            padding: 8px 20px; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            font-weight: bold; 
+            width: 90px; 
+        }
+        button.playing { background: #0077cc; border-color: #0099ff; }
+        input[type=range] { -webkit-appearance: none; width: 250px; background: transparent; cursor: pointer; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; background: #444; border-radius: 2px; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 24px; width: 8px; background: #66ccff; margin-top: -10px; }
+        .time-label { font-family: monospace; font-size: 14px; width: 190px; text-align: right; color: #66ccff; font-weight: bold; }
+        
+        .inc-control label { font-size: 14px; color: #aaa; font-weight: bold; }
+        .inc-control input[type="number"] { width: 90px; background: #222; border: 2px solid #66ccff; color: #fff; padding: 6px; border-radius: 4px; text-align: right; font-size: 16px; }
+    </style>
+</head>
+<body>
+    <header><h1>THE ZERO-AGE STATE OF A <span>CATACLYSMIC VARIABLE</span></h1></header>
+    
+    <div id="main-container">
+        <!-- Left Panel: 3D View -->
+        <div id="left-panel">
+            <div id="canvas-container">
+                <div id="info-panel">
+                    <div class="param-title">PCEB System Parameters</div>
+                    <div class="param-row"><span>Orbital Period:</span> <span>0.50909 days</span></div>
+                    <div class="param-row"><span>Inclination:</span> <span>82.585&deg;</span></div>
+                    <div class="param-row"><span>Mass Ratio q:</span> <span>0.501</span></div>
+                    <div class="param-row"><span>Semi-major Axis:</span> <span>2.5841 R&#9737;</span></div>
+                    <div class="param-row" style="margin-top: 6px;"><span class="primary-color">Primary (sdO / Proto-WD)</span></div>
+                    <div class="param-row"><span>Mass / Radius:</span> <span>0.596 M&#9737; / 0.036 R&#9737;</span></div>
+                    <div class="param-row"><span>Temperature:</span> <span>83,950 K</span></div>
+                    <div class="param-row" style="margin-top: 6px;"><span class="secondary-color">Secondary (M Dwarf)</span></div>
+                    <div class="param-row"><span>Mass / Radius:</span> <span>0.298 M&#9737; / 0.379 R&#9737;</span></div>
+                    <div class="param-row"><span>Temperature:</span> <span>3,993 K</span></div>
+                    <div class="param-row" style="margin-top: 6px;"><span class="highlight-color">Roche Lobe filling f<sub>2</sub>:</span> <span>0.458</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Data View -->
+        <div id="right-panel">
+            <div class="sub-panel">
+                <div class="panel-header">Earth View (Illumination & Eclipse)</div>
+                <div class="canvas-wrapper"><canvas id="eclipse-canvas" class="sub-canvas"></canvas></div>
+            </div>
+            <div class="sub-panel">
+                <div class="panel-header">Light Curve (Phase 0 to 2)</div>
+                <div class="canvas-wrapper"><canvas id="lc-canvas" class="sub-canvas"></canvas></div>
+                <div id="physics-label">Awaiting observation...</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="global-controls">
+        <div class="control-group">
+            <button id="play-btn" class="playing">Pause</button>
+            <input type="range" id="time-slider" min="0" max="2000" value="0">
+            <div class="time-label" id="time-display">Phase: 0.00</div>
+        </div>
+        <div class="control-group inc-control">
+            <label>Inclination:</label>
+            <input type="number" id="inc-input" step="0.1" value="82.585" min="0" max="90">
+            <span style="font-size: 16px; font-weight: bold;">&deg;</span>
+            <span style="font-size: 14px; color: #ffffff; margin-left: 5px;">[Default: 82.585&deg;]</span>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script>
+        // --- 1. Physics Parameters ---
+        const P_days = 0.50909;
+        let i_deg = 82.585; 
+        const M1 = 0.596, M2 = 0.298;
+        const R1 = 0.03618, R2 = 0.3795, RL2 = 0.8287;
+        const a_total = 2.5841;
+
+        const SCALE = 2.0; 
+        const radius1 = R1 * SCALE, radius2 = R2 * SCALE, radiusL2 = RL2 * SCALE; 
+        const dist1 = a_total * (M2 / (M1 + M2)) * SCALE, dist2 = a_total * (M1 / (M1 + M2)) * SCALE;
+
+        // --- 2. 3D Scene Setup ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x000000); 
+
+        const camera = new THREE.PerspectiveCamera(40, container.clientWidth / container.clientHeight, 0.1, 1000);
+        camera.position.set(-1.5, 6, 18); 
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.shadowMap.enabled = true;
+        container.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.enableZoom = false; 
+        controls.target.set(-1.5, 0, 0); 
+
+        scene.add(new THREE.AmbientLight(0x444444)); 
+
+        // 3D Helpers
+        const gridHelper = new THREE.GridHelper(40, 20, 0xffffff, 0x888888);
+        scene.add(gridHelper);
+        scene.add(new THREE.AxesHelper(10));
+
+        // Star Materials
+        const mat1 = new THREE.MeshStandardMaterial({ color: 0x66ccff, emissive: 0x3388ff, emissiveIntensity: 2.5 });
+        const star1 = new THREE.Mesh(new THREE.SphereGeometry(radius1, 32, 32), mat1);
+        
+        const primaryLight = new THREE.PointLight(0xaaccff, 3.0, 0);
+        primaryLight.castShadow = true;
+        star1.add(primaryLight); 
+        star1.add(createGlow(0x66ccff, radius1 * 8));
+
+        const mat2 = new THREE.MeshStandardMaterial({ color: 0xaa2200, emissive: 0x550000, roughness: 0.8 });
+        const star2 = new THREE.Mesh(new THREE.SphereGeometry(radius2, 32, 32), mat2);
+        star2.receiveShadow = true; 
+        star2.add(createGlow(0xff4400, radius2 * 1.2));
+
+        // Roche Lobe Wireframe
+        const lobeGeo3D = new THREE.SphereGeometry(radiusL2, 24, 12);
+        const lobe3D = new THREE.Mesh(lobeGeo3D, new THREE.MeshBasicMaterial({ color: 0xffaa00, wireframe: true, transparent: true, opacity: 0.6 }));
+
+        const orbitGroup = new THREE.Group();
+        
+        // 3D Orbits
+        const orbitPoints1 = new THREE.EllipseCurve(0, 0, dist1, dist1).getPoints(100).map(p => new THREE.Vector3(p.x, 0, p.y));
+        orbitGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(orbitPoints1), new THREE.LineBasicMaterial({ color: 0x66ccff, transparent: true, opacity: 0.8 })));
+        
+        const orbitPoints2 = new THREE.EllipseCurve(0, 0, dist2, dist2).getPoints(100).map(p => new THREE.Vector3(p.x, 0, p.y));
+        orbitGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(orbitPoints2), new THREE.LineBasicMaterial({ color: 0xff4400, transparent: true, opacity: 0.8 })));
+
+        orbitGroup.add(star1);
+        
+        const secondaryGroup = new THREE.Group();
+        secondaryGroup.add(star2); 
+        secondaryGroup.add(lobe3D);
+        orbitGroup.add(secondaryGroup);
+        
+        scene.add(orbitGroup);
+        orbitGroup.rotation.x = THREE.MathUtils.degToRad(i_deg);
+
+        function createGlow(color, size) {
+            const canvas = document.createElement('canvas'); canvas.width = 128; canvas.height = 128;
+            const ctx = canvas.getContext('2d'); const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+            grad.addColorStop(0, 'rgba(255,255,255,1)'); grad.addColorStop(0.2, '#' + color.toString(16).padStart(6, '0')); grad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = grad; ctx.fillRect(0, 0, 128, 128);
+            return new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), blending: THREE.AdditiveBlending, transparent: true }));
+        }
+
+        // --- 3. Inclination UI ---
+        const incInput = document.getElementById('inc-input');
+        incInput.addEventListener('input', (e) => {
+            let val = parseFloat(e.target.value);
+            if (!isNaN(val)) {
+                i_deg = Math.min(90, Math.max(0, val));
+                orbitGroup.rotation.x = THREE.MathUtils.degToRad(i_deg);
+                drawLightCurve(phase); 
+            }
+        });
+
+        container.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const change = e.deltaY > 0 ? -1 : 1;
+            i_deg += change;
+            i_deg = Math.min(90, Math.max(0, i_deg));
+            incInput.value = i_deg.toFixed(3);
+            orbitGroup.rotation.x = THREE.MathUtils.degToRad(i_deg);
+            drawLightCurve(phase);
+        }, { passive: false });
+
+        // --- 4. 2D Data Views ---
+        const eclipseCanvas = document.getElementById('eclipse-canvas');
+        const eclCtx = eclipseCanvas.getContext('2d');
+        const lcCanvas = document.getElementById('lc-canvas');
+        const lcCtx = lcCanvas.getContext('2d');
+        const physicsLabel = document.getElementById('physics-label');
+        const dpr = window.devicePixelRatio || 1;
+
+        function resize2DCanvases() {
+            const w = eclipseCanvas.parentElement.clientWidth, h = eclipseCanvas.parentElement.clientHeight;
+            eclipseCanvas.width = w * dpr; eclipseCanvas.height = h * dpr; eclipseCanvas.style.width = w + 'px'; eclipseCanvas.style.height = h + 'px'; eclCtx.scale(dpr, dpr);
+            const lw = lcCanvas.parentElement.clientWidth, lh = lcCanvas.parentElement.clientHeight;
+            lcCanvas.width = lw * dpr; lcCanvas.height = lh * dpr; lcCanvas.style.width = lw + 'px'; lcCanvas.style.height = lh + 'px'; lcCtx.scale(dpr, dpr);
+        }
+        window.addEventListener('resize', resize2DCanvases);
+        resize2DCanvases();
+
+        function calcFlux(p_rad) {
+            const cosI = Math.cos(THREE.MathUtils.degToRad(i_deg));
+            const sinI = Math.sin(THREE.MathUtils.degToRad(i_deg));
+            
+            const phaseShift = p_rad - Math.PI / 2; 
+
+            const x1 = Math.sin(phaseShift) * dist1;
+            const y1 = -Math.cos(phaseShift) * dist1 * cosI;
+            const z1 = -Math.cos(phaseShift) * dist1 * sinI; 
+
+            const x2 = -Math.sin(phaseShift) * dist2;
+            const y2 = Math.cos(phaseShift) * dist2 * cosI;
+            const z2 = Math.cos(phaseShift) * dist2 * sinI;
+
+            const dx = x1 - x2;
+            const dy = y1 - y2;
+            const distCenter = Math.sqrt(dx*dx + dy*dy);
+
+            let baseFlux = 1.0 - Math.cos(p_rad) * 0.06; 
+            let flux = baseFlux;
+            
+            if (distCenter < radius1 + radius2) {
+                let overlapRatio = 0;
+                if (distCenter < Math.abs(radius2 - radius1)) {
+                    overlapRatio = 1.0;
+                } else {
+                    overlapRatio = (radius1 + radius2 - distCenter) / (2 * radius1);
+                }
+                
+                if (z2 > z1) {
+                    flux -= 0.9 * overlapRatio;
+                } else {
+                    flux -= 0.1 * overlapRatio;
+                }
+            }
+            return flux;
+        }
+
+        function draw2DView(p_rad) {
+            const w = eclipseCanvas.clientWidth, h = eclipseCanvas.clientHeight;
+            const cx = w / 2, cy = h / 2;
+            const cosI = Math.cos(THREE.MathUtils.degToRad(i_deg));
+            const sinI = Math.sin(THREE.MathUtils.degToRad(i_deg));
+            
+            const phaseShift = p_rad - Math.PI / 2;
+            
+            const x1 = Math.sin(phaseShift) * dist1;
+            const y1 = -Math.cos(phaseShift) * dist1 * cosI;
+            const z1 = -Math.cos(phaseShift) * dist1 * sinI; 
+
+            const x2 = -Math.sin(phaseShift) * dist2;
+            const y2 = Math.cos(phaseShift) * dist2 * cosI;
+            const z2 = Math.cos(phaseShift) * dist2 * sinI;
+
+            const PX_SCALE = (w / 2.2) / (a_total * SCALE); 
+            
+            const px1 = cx + x1 * PX_SCALE, py1 = cy + y1 * PX_SCALE, r1_px = radius1 * PX_SCALE;
+            const px2 = cx + x2 * PX_SCALE, py2 = cy + y2 * PX_SCALE, r2_px = radius2 * PX_SCALE, rL2_px = radiusL2 * PX_SCALE; 
+
+            eclCtx.clearRect(0, 0, w, h);
+            
+            eclCtx.beginPath(); eclCtx.ellipse(cx, cy, dist1 * PX_SCALE, dist1 * cosI * PX_SCALE, 0, 0, Math.PI * 2); eclCtx.strokeStyle = 'rgba(102, 204, 255, 0.6)'; eclCtx.lineWidth = 2; eclCtx.stroke();
+            eclCtx.beginPath(); eclCtx.ellipse(cx, cy, dist2 * PX_SCALE, dist2 * cosI * PX_SCALE, 0, 0, Math.PI * 2); eclCtx.strokeStyle = 'rgba(255, 68, 0, 0.6)'; eclCtx.lineWidth = 2; eclCtx.stroke();
+
+            eclCtx.save(); eclCtx.translate(px2, py2);
+            eclCtx.beginPath(); eclCtx.arc(0, 0, rL2_px, 0, Math.PI*2); eclCtx.strokeStyle = 'rgba(255, 170, 0, 0.6)'; eclCtx.lineWidth = 1.5; eclCtx.stroke();
+            eclCtx.fillStyle = 'rgba(255, 170, 0, 0.05)'; eclCtx.fill();
+            eclCtx.beginPath(); eclCtx.ellipse(0, 0, rL2_px, rL2_px * 0.3, 0, 0, Math.PI*2); eclCtx.ellipse(0, 0, rL2_px * 0.3, rL2_px, 0, 0, Math.PI*2); eclCtx.strokeStyle = 'rgba(255, 170, 0, 0.3)'; eclCtx.lineWidth = 1; eclCtx.stroke();
+            eclCtx.restore();
+
+            const stars = [{ type: 'primary', x: px1, y: py1, r: r1_px, z: z1 }, { type: 'secondary', x: px2, y: py2, r: r2_px, z: z2 }];
+            stars.sort((a, b) => a.z - b.z);
+
+            stars.forEach(star => {
+                if (star.type === 'secondary') {
+                    let baseGrad = eclCtx.createRadialGradient(px2, py2, 0, px2, py2, r2_px);
+                    baseGrad.addColorStop(0, '#330000'); baseGrad.addColorStop(1, '#110000'); 
+                    eclCtx.beginPath(); eclCtx.arc(px2, py2, r2_px, 0, Math.PI * 2); eclCtx.fillStyle = baseGrad; eclCtx.fill();
+
+                    // 微调增强的光照效应
+                    const dz = z1 - z2; 
+                    let fadeFactor = Math.min(1, Math.max(0, (dz + r2_px * 1.5) / (2.8 * r2_px)));
+                    
+                    if (fadeFactor > 0) {
+                        let dx = px1 - px2, dy = py1 - py2, dist = Math.hypot(dx, dy);
+                        if (dist === 0) dist = 0.001;
+                        
+                        let ox = px2 + (dx / dist) * r2_px * 0.8;
+                        let oy = py2 + (dy / dist) * r2_px * 0.8;
+
+                        // 提高了一点点亮度和范围
+                        let litGrad = eclCtx.createRadialGradient(ox, oy, 0, px2, py2, r2_px * 1.2);
+                        litGrad.addColorStop(0, '#ffffff');     // 核心更亮
+                        litGrad.addColorStop(0.35, '#ffcc66');  // 高光区扩大
+                        litGrad.addColorStop(0.7, '#ff4400');   // 亮橙色过渡
+                        litGrad.addColorStop(1, 'rgba(80, 0, 0, 0)'); 
+
+                        eclCtx.save(); 
+                        eclCtx.globalAlpha = fadeFactor; 
+                        eclCtx.beginPath(); 
+                        eclCtx.arc(px2, py2, r2_px, 0, Math.PI * 2); 
+                        eclCtx.fillStyle = litGrad; 
+                        eclCtx.fill(); 
+                        eclCtx.restore();
+                    }
+                } else {
+                    eclCtx.save(); 
+                    eclCtx.shadowColor = '#66ccff'; 
+                    eclCtx.shadowBlur = 25;
+                    let grad = eclCtx.createRadialGradient(px1, py1, 0, px1, py1, r1_px);
+                    grad.addColorStop(0, '#ffffff'); grad.addColorStop(0.3, '#88ddff'); grad.addColorStop(1, '#2266cc'); 
+                    eclCtx.beginPath(); eclCtx.arc(px1, py1, r1_px, 0, Math.PI * 2); eclCtx.fillStyle = grad; eclCtx.fill(); 
+                    eclCtx.restore();
+                }
+            });
+        }
+
+        function drawLightCurve(currentPhase) {
+            const w = lcCanvas.clientWidth, h = lcCanvas.clientHeight;
+            lcCtx.clearRect(0, 0, w, h);
+            
+            lcCtx.strokeStyle = '#222'; lcCtx.lineWidth = 1; lcCtx.beginPath();
+            for(let i=0; i<=4; i++) { let y = h * (0.15 + i*0.18); lcCtx.moveTo(0, y); lcCtx.lineTo(w, y); }
+            for(let p=0; p<=2; p+=0.5) { let x = (p/2) * w; lcCtx.moveTo(x, 0); lcCtx.lineTo(x, h); }
+            lcCtx.stroke();
+
+            lcCtx.fillStyle = '#666'; lcCtx.font = '10px monospace';
+            lcCtx.fillText('0.0', 5, h - 5); lcCtx.fillText('0.5', w*0.25, h - 5); lcCtx.fillText('1.0', w*0.5 - 10, h - 5); lcCtx.fillText('1.5', w*0.75, h - 5); lcCtx.fillText('2.0', w - 25, h - 5);
+            
+            lcCtx.beginPath(); lcCtx.strokeStyle = 'rgba(255, 170, 0, 0.4)'; lcCtx.setLineDash([3, 3]); lcCtx.lineWidth = 1.5;
+            for (let i = 0; i <= 400; i++) {
+                let p = (i / 400) * 2;
+                let baseFlux = 1.0 - Math.cos(p * Math.PI * 2) * 0.06;
+                let x = (p / 2) * w, y = h - (baseFlux * h * 0.75 + h * 0.2);
+                if (i === 0) lcCtx.moveTo(x, y); else lcCtx.lineTo(x, y);
+            }
+            lcCtx.stroke(); lcCtx.setLineDash([]); 
+            
+            lcCtx.beginPath(); lcCtx.strokeStyle = '#00ffcc'; lcCtx.lineWidth = 2; lcCtx.lineJoin = 'round';
+            for (let i = 0; i <= 400; i++) {
+                let p = (i / 400) * 2;
+                let flux = calcFlux(p * Math.PI * 2); 
+                let x = (p / 2) * w, y = h - (flux * h * 0.75 + h * 0.2);
+                if (i === 0) lcCtx.moveTo(x, y); else lcCtx.lineTo(x, y);
+            }
+            lcCtx.stroke();
+
+            let p_cur = currentPhase / (Math.PI * 2); 
+            let currentFlux = calcFlux(currentPhase);
+            let cx = (p_cur / 2) * w, cy = h - (currentFlux * h * 0.75 + h * 0.2);
+
+            lcCtx.beginPath(); lcCtx.fillStyle = '#ffaa00'; lcCtx.arc(cx, cy, 5, 0, Math.PI * 2); lcCtx.fill();
+            
+            let singlePhase = (p_cur % 1 + 1) % 1;
+            if (singlePhase > 0.22 && singlePhase < 0.28) {
+                physicsLabel.innerText = "Primary Eclipse (Deep Minimum): The red dwarf completely blocks the bright blue star.";
+                physicsLabel.style.borderColor = "#66ccff";
+            } else if (singlePhase > 0.72 && singlePhase < 0.78) {
+                physicsLabel.innerText = "Secondary Eclipse (Shallow Minimum): The blue star blocks the red dwarf, slight dip.";
+                physicsLabel.style.borderColor = "#88ddff";
+            } else if (singlePhase < 0.05 || singlePhase > 0.95) {
+                physicsLabel.innerText = "Phase 0.0: The heated face of the red dwarf is fully visible, reaching maximum brightness.";
+                physicsLabel.style.borderColor = "#ffaa00";
+            } else if (singlePhase > 0.45 && singlePhase < 0.55) {
+                physicsLabel.innerText = "Phase 0.5: The irradiated face is again aligned with Earth, creating a second peak.";
+                physicsLabel.style.borderColor = "#ffaa00";
+            } else {
+                physicsLabel.innerText = "System orbiting: brightness modulated by reflection effect and geometry.";
+                physicsLabel.style.borderColor = "#555";
+            }
+        }
+
+        // --- 5. Animation Loop ---
+        let isPlaying = true, phase = 0; 
+        const speed = 0.02; 
+        const slider = document.getElementById('time-slider'), playBtn = document.getElementById('play-btn'), timeDisplay = document.getElementById('time-display');
+
+        function updatePositions(p) {
+            const phaseShift = p - Math.PI / 2;
+            
+            star1.position.set(Math.sin(phaseShift) * dist1, 0, -Math.cos(phaseShift) * dist1);
+            secondaryGroup.position.set(-Math.sin(phaseShift) * dist2, 0, Math.cos(phaseShift) * dist2);
+
+            if (isPlaying) slider.value = (p / (Math.PI * 4)) * 2000;
+            
+            let normalizedPhase = (p / (Math.PI * 2)) % 1;
+            const currentDays = (normalizedPhase * P_days).toFixed(4);
+            timeDisplay.innerText = `Phase: ${normalizedPhase.toFixed(2)} (${currentDays} d)`;
+
+            draw2DView(p);
+            drawLightCurve(p);
+        }
+
+        playBtn.addEventListener('click', () => {
+            isPlaying = !isPlaying;
+            playBtn.innerText = isPlaying ? 'Pause' : 'Play';
+            playBtn.classList.toggle('playing', isPlaying);
+        });
+
+        slider.addEventListener('input', (e) => {
+            isPlaying = false;
+            playBtn.innerText = 'Play';
+            playBtn.classList.remove('playing');
+            phase = (e.target.value / 2000) * Math.PI * 4;
+            updatePositions(phase);
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (isPlaying) {
+                phase += speed;
+                if (phase > Math.PI * 4) phase -= Math.PI * 4;
+                updatePositions(phase);
+            }
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            resize2DCanvases();
+            drawLightCurve(phase);
+        });
+
+        updatePositions(0);
+        animate();
+    </script>
+</body>
+</html>
