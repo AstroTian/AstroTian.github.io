@@ -119,12 +119,13 @@
             box-shadow: 0 2px 10px rgba(0,0,0,0.5);
         }
 
-        .legend { font-size: 11px; font-weight: normal; display: flex; gap: 10px; }
+        .legend { font-size: 11px; font-weight: normal; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;}
         .legend-item { display: flex; align-items: center; gap: 4px; }
         .legend-color { width: 12px; height: 2px; display: inline-block; }
+        .legend-dashed { width: 12px; height: 0px; border-top: 2px dashed #aa77ff; display: inline-block; }
 
         #global-controls { 
-            height: 80px; 
+            height: 90px; 
             background-color: #151515; 
             border-top: 2px solid #333; 
             display: flex; 
@@ -133,6 +134,7 @@
             gap: 20px; 
             flex-shrink: 0; 
             z-index: 100;
+            flex-wrap: wrap;
         }
         .control-group { display: flex; align-items: center; gap: 15px; }
         button { 
@@ -149,7 +151,7 @@
         button.playing { background: #0077cc; border-color: #0099ff; }
         
         #tidal-btn {
-            width: 150px;
+            width: 140px;
             background: #005522;
             border-color: #00aa44;
         }
@@ -158,12 +160,12 @@
             border-color: #cc4400;
         }
 
-        input[type=range] { -webkit-appearance: none; width: clamp(100px, 15vw, 200px); background: transparent; cursor: pointer; }
+        input[type=range] { -webkit-appearance: none; width: clamp(100px, 12vw, 150px); background: transparent; cursor: pointer; }
         input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; background: #444; border-radius: 2px; }
-        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 24px; width: 8px; background: #66ccff; margin-top: -10px; }
-        .time-label { font-family: monospace; font-size: clamp(12px, 1.2vw, 14px); width: 170px; text-align: right; color: #66ccff; font-weight: bold; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 20px; width: 8px; background: #ffaa00; margin-top: -8px; }
+        .time-label { font-family: monospace; font-size: clamp(12px, 1.2vw, 14px); width: 150px; text-align: right; color: #66ccff; font-weight: bold; }
         
-        .inc-control label { font-size: clamp(12px, 1.2vw, 14px); color: #aaa; font-weight: bold; }
+        .inc-control label, .thermal-control label { font-size: clamp(12px, 1.2vw, 14px); color: #aaa; font-weight: bold; }
         .inc-control input[type="number"] { width: 80px; background: #222; border: 2px solid #66ccff; color: #fff; padding: 6px; border-radius: 4px; text-align: right; font-size: clamp(14px, 1.5vw, 16px); }
 
         @media (max-width: 900px) {
@@ -186,7 +188,6 @@
             <div id="canvas-container">
                 <div id="info-panel">
                     <div class="param-title">PCEB System Parameters</div>
-                    
                     <div class="param-subtitle">Orbital Parameters</div>
                     <div class="param-row"><span>Period (P):</span> <span>0.50909 days</span></div>
                     <div class="param-row"><span>Inclination (i):</span> <span>82.585&deg;</span></div>
@@ -229,9 +230,10 @@
                 <div class="panel-header">
                     <span>Multi-band Light Curve</span>
                     <div class="legend">
-                        <div class="legend-item"><span class="legend-color" style="background:#33ff33;"></span>g-band</div>
-                        <div class="legend-item"><span class="legend-color" style="background:#ff3333;"></span>r-band</div>
-                        <div class="legend-item"><span class="legend-color" style="background:#aa77ff;"></span>i-band</div>
+                        <div class="legend-item"><span class="legend-color" style="background:#33ff33;"></span>g</div>
+                        <div class="legend-item"><span class="legend-color" style="background:#ff3333;"></span>r</div>
+                        <div class="legend-item"><span class="legend-color" style="background:#aa77ff;"></span>i</div>
+                        <div class="legend-item"><span class="legend-dashed"></span>Ideal i-band Sinusoid</div>
                     </div>
                 </div>
                 <div class="canvas-wrapper"><canvas id="lc-canvas" class="sub-canvas"></canvas></div>
@@ -247,6 +249,13 @@
             <input type="range" id="time-slider" min="0" max="2000" value="0">
             <div class="time-label" id="time-display">Phase: 0.00</div>
         </div>
+        
+        <div class="control-group thermal-control">
+            <label>Thermal Lag:</label>
+            <input type="range" id="thermal-slider" min="0" max="100" value="0">
+            <span id="thermal-val" style="color:#ffaa00; font-weight:bold; font-family:monospace; width: 35px;">0%</span>
+        </div>
+
         <div class="control-group inc-control">
             <label>Inclination:</label>
             <input type="number" id="inc-input" step="0.1" value="82.585" min="0" max="90">
@@ -268,8 +277,9 @@
         const radius1 = R1 * SCALE, radius2 = R2 * SCALE, radiusL2 = RL2 * SCALE; 
         const dist1 = a_total * (M2 / (M1 + M2)) * SCALE, dist2 = a_total * (M1 / (M1 + M2)) * SCALE;
 
-        // 状态变量：默认潮汐锁定
+        // 状态变量
         let isTidallyLocked = true;
+        let thermalLag = 0; // 0 到 1 之间
 
         // --- 2. 3D Scene Setup ---
         const container = document.getElementById('canvas-container');
@@ -359,7 +369,6 @@
             updatePositions(phase);
         }, { passive: false });
 
-        // 潮汐锁定按钮逻辑
         const tidalBtn = document.getElementById('tidal-btn');
         tidalBtn.addEventListener('click', () => {
             isTidallyLocked = !isTidallyLocked;
@@ -370,6 +379,14 @@
                 tidalBtn.innerText = "Tidal: Unlocked";
                 tidalBtn.classList.add('unlocked');
             }
+            updatePositions(phase);
+        });
+
+        const thermalSlider = document.getElementById('thermal-slider');
+        const thermalVal = document.getElementById('thermal-val');
+        thermalSlider.addEventListener('input', (e) => {
+            thermalLag = e.target.value / 100;
+            thermalVal.innerText = `${e.target.value}%`;
             updatePositions(phase);
         });
 
@@ -433,12 +450,21 @@
                 if (z2 > z1) isDeepEclipse = true;
             }
 
-            // 潮汐锁定才会产生完美的波浪
-            // 如果不锁定，假设高光斑乱跑，为了演示极端情况，我们假设反射波完全消失，或者变得极度不规则。
-            // 这里演示反射波消失，只剩下几何掩食。
             let flux = {};
             for (let band of ['g', 'r', 'i']) {
-                let reflectionWave = isTidallyLocked ? (1.0 - Math.cos(p_rad) * reflAmp[band]) : 1.0; 
+                let reflectionWave = 1.0;
+                
+                if (isTidallyLocked) {
+                    // 锁定状态：热滞后导致振幅衰减和相位滞后
+                    let amplitudeFactor = 1.0 - thermalLag * 0.8;
+                    let phaseShift = thermalLag * 1.5; 
+                    reflectionWave = 1.0 - Math.cos(p_rad - phaseShift) * reflAmp[band] * amplitudeFactor; 
+                } else {
+                    // 不锁定状态：自转抹平效应 + 热滞后放大效应
+                    let amplitudeFactor = 0.4 * (1.0 - thermalLag * 0.8);
+                    let phaseShift = 0.8 + thermalLag * 1.5; 
+                    reflectionWave = 1.0 - Math.cos(p_rad - phaseShift) * reflAmp[band] * amplitudeFactor; 
+                }
                 
                 let eclipse = 0;
                 if (overlapRatio > 0) {
@@ -494,19 +520,32 @@
                     baseGrad.addColorStop(0, '#330000'); baseGrad.addColorStop(1, '#110000'); 
                     eclCtx.beginPath(); eclCtx.arc(px2, py2, r2_px, 0, Math.PI * 2); eclCtx.fillStyle = baseGrad; eclCtx.fill();
 
-                    // 光照逻辑：锁定 vs 不锁定
-                    let lightX, lightY;
-                    if (isTidallyLocked) {
-                        // 锁定：高光永远指向主星
-                        lightX = px1; lightY = py1;
-                    } else {
-                        // 不锁定（假设不自转）：高光永远指向宇宙的同一方向（例如永远在屏幕右侧）
-                        lightX = px2 + r2_px * 10; lightY = py2;
+                    let lightX = px1; 
+                    let lightY = py1;
+
+                    if (isTidallyLocked && thermalLag > 0) {
+                        let dx = px1 - px2;
+                        let dy = py1 - py2;
+                        let dist = Math.hypot(dx, dy);
+                        let angle = Math.atan2(dy, dx);
+                        angle += thermalLag * 0.6; 
+                        lightX = px2 + Math.cos(angle) * dist;
+                        lightY = py2 + Math.sin(angle) * dist;
+                    } else if (!isTidallyLocked && thermalLag > 0) {
+                        let dx = px1 - px2;
+                        let dy = py1 - py2;
+                        let dist = Math.hypot(dx, dy);
+                        let angle = Math.atan2(dy, dx);
+                        angle += 0.5 + thermalLag * 1.0; 
+                        lightX = px2 + Math.cos(angle) * dist;
+                        lightY = py2 + Math.sin(angle) * dist;
                     }
 
                     const dz = z1 - z2; 
                     let fadeFactor = Math.min(1, Math.max(0, (dz + r2_px * 1.5) / (2.8 * r2_px)));
                     
+                    let brightnessFactor = 1.0 - thermalLag * 0.5;
+
                     if (fadeFactor > 0) {
                         let dx = lightX - px2, dy = lightY - py2, dist = Math.hypot(dx, dy);
                         if (dist === 0) dist = 0.001;
@@ -514,9 +553,9 @@
                         let oy = py2 + (dy / dist) * r2_px * 0.8;
 
                         let litGrad = eclCtx.createRadialGradient(ox, oy, 0, px2, py2, r2_px * 1.2);
-                        litGrad.addColorStop(0, '#ffffff');     
-                        litGrad.addColorStop(0.35, '#ffcc66');  
-                        litGrad.addColorStop(0.7, '#ff4400');   
+                        litGrad.addColorStop(0, `rgba(255, 255, 255, ${brightnessFactor})`);     
+                        litGrad.addColorStop(0.35, `rgba(255, 204, 102, ${brightnessFactor})`);  
+                        litGrad.addColorStop(0.7, `rgba(255, 68, 0, ${brightnessFactor})`);   
                         litGrad.addColorStop(1, 'rgba(80, 0, 0, 0)'); 
 
                         eclCtx.save(); eclCtx.globalAlpha = fadeFactor; 
@@ -577,7 +616,24 @@
                 lcCtx.stroke();
             });
             lcCtx.textAlign = 'left'; 
-            
+
+            // 新增：绘制理想 i-band 正弦基准线（虚线，不受掩食和热滞后影响）
+            lcCtx.beginPath();
+            lcCtx.strokeStyle = 'rgba(170, 119, 255, 0.6)'; // 淡紫色虚线
+            lcCtx.setLineDash([5, 5]);
+            lcCtx.lineWidth = 1.5;
+            for (let i = 0; i <= 800; i++) {
+                let p = x_min + (i / 800) * (x_max - x_min);
+                let p_rad = p * 2 * Math.PI;
+                // 理想状态下无遮挡、无滞后的 i-band 反射波
+                let idealFlux = 1.0 - Math.cos(p_rad) * 0.08;
+                let x = (i / 800) * w;
+                let y = paddingTop + (1 - idealFlux) * graphHeight; 
+                if (i === 0) lcCtx.moveTo(x, y); else lcCtx.lineTo(x, y);
+            }
+            lcCtx.stroke();
+            lcCtx.setLineDash([]); // 恢复实线
+
             const bands = [
                 { key: 'g', color: '#33ff33' },
                 { key: 'r', color: '#ff3333' },
@@ -619,19 +675,19 @@
             // 物理文字解说
             let singlePhase = (p_cur % 1 + 1) % 1;
             if (!isTidallyLocked) {
-                physicsLabel.innerText = "Unlocked: The heated face does not follow the primary. The 0.509d reflection wave vanishes or gets distorted.";
+                physicsLabel.innerText = "Unlocked: The actual i-band (solid purple) deviates from the ideal sinusoid (dashed) due to rotation smearing.";
                 physicsLabel.style.borderColor = "#cc4400";
+            } else if (thermalLag > 0.3) {
+                physicsLabel.innerText = "High Thermal Lag: The actual i-band (solid purple) deviates from the ideal sinusoid (dashed) by losing amplitude and shifting phase.";
+                physicsLabel.style.borderColor = "#ffaa00";
             } else if (singlePhase < 0.05 || singlePhase > 0.95) {
                 physicsLabel.innerText = "Primary Eclipse (0.0): Deepest minimum. Red dwarf blocks the bright blue star.";
                 physicsLabel.style.borderColor = "#33ff33";
             } else if (singlePhase > 0.45 && singlePhase < 0.55) {
                 physicsLabel.innerText = "Secondary Eclipse (0.5): Shallow dip. Blue star blocks a tiny part of the red dwarf.";
                 physicsLabel.style.borderColor = "#88ddff";
-            } else if (singlePhase > 0.22 && singlePhase < 0.28) {
-                physicsLabel.innerText = "Phase 0.25: Maximum separation. The 0.509d reflection wave is perfectly maintained by tidal locking.";
-                physicsLabel.style.borderColor = "#aa77ff";
             } else {
-                physicsLabel.innerText = "System orbiting: g-band tracks the primary, i-band reveals the irradiated secondary.";
+                physicsLabel.innerText = "System orbiting: the actual i-band follows the ideal sinusoid perfectly outside of eclipses.";
                 physicsLabel.style.borderColor = "#555";
             }
         }
