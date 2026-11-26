@@ -130,7 +130,7 @@
             display: flex; 
             align-items: center; 
             justify-content: center; 
-            gap: 30px; 
+            gap: 20px; 
             flex-shrink: 0; 
             z-index: 100;
         }
@@ -143,18 +143,28 @@
             border-radius: 6px; 
             cursor: pointer; 
             font-weight: bold; 
-            width: 90px; 
             font-size: clamp(12px, 1.2vw, 14px);
+            transition: all 0.2s;
         }
         button.playing { background: #0077cc; border-color: #0099ff; }
-        input[type=range] { -webkit-appearance: none; width: clamp(150px, 20vw, 300px); background: transparent; cursor: pointer; }
+        
+        #tidal-btn {
+            width: 150px;
+            background: #005522;
+            border-color: #00aa44;
+        }
+        #tidal-btn.unlocked {
+            background: #662200;
+            border-color: #cc4400;
+        }
+
+        input[type=range] { -webkit-appearance: none; width: clamp(100px, 15vw, 200px); background: transparent; cursor: pointer; }
         input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; background: #444; border-radius: 2px; }
         input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 24px; width: 8px; background: #66ccff; margin-top: -10px; }
-        .time-label { font-family: monospace; font-size: clamp(12px, 1.2vw, 14px); width: 190px; text-align: right; color: #66ccff; font-weight: bold; }
+        .time-label { font-family: monospace; font-size: clamp(12px, 1.2vw, 14px); width: 170px; text-align: right; color: #66ccff; font-weight: bold; }
         
         .inc-control label { font-size: clamp(12px, 1.2vw, 14px); color: #aaa; font-weight: bold; }
-        .inc-control input[type="number"] { width: 90px; background: #222; border: 2px solid #66ccff; color: #fff; padding: 6px; border-radius: 4px; text-align: right; font-size: clamp(14px, 1.5vw, 16px); }
-        .default-text { font-size: clamp(12px, 1.2vw, 14px); color: #fff; margin-left: 5px; }
+        .inc-control input[type="number"] { width: 80px; background: #222; border: 2px solid #66ccff; color: #fff; padding: 6px; border-radius: 4px; text-align: right; font-size: clamp(14px, 1.5vw, 16px); }
 
         @media (max-width: 900px) {
             body { overflow-y: auto; height: auto; }
@@ -233,6 +243,7 @@
     <div id="global-controls">
         <div class="control-group">
             <button id="play-btn" class="playing">Pause</button>
+            <button id="tidal-btn">Tidal: Locked</button>
             <input type="range" id="time-slider" min="0" max="2000" value="0">
             <div class="time-label" id="time-display">Phase: 0.00</div>
         </div>
@@ -240,7 +251,6 @@
             <label>Inclination:</label>
             <input type="number" id="inc-input" step="0.1" value="82.585" min="0" max="90">
             <span style="font-size: 16px; font-weight: bold;">&deg;</span>
-            <span class="default-text">[Default: 82.585&deg;]</span>
         </div>
     </div>
 
@@ -257,6 +267,9 @@
         const SCALE = 2.0; 
         const radius1 = R1 * SCALE, radius2 = R2 * SCALE, radiusL2 = RL2 * SCALE; 
         const dist1 = a_total * (M2 / (M1 + M2)) * SCALE, dist2 = a_total * (M1 / (M1 + M2)) * SCALE;
+
+        // 状态变量：默认潮汐锁定
+        let isTidallyLocked = true;
 
         // --- 2. 3D Scene Setup ---
         const container = document.getElementById('canvas-container');
@@ -325,14 +338,14 @@
             return new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), blending: THREE.AdditiveBlending, transparent: true }));
         }
 
-        // --- 3. Inclination UI ---
+        // --- 3. UI Control ---
         const incInput = document.getElementById('inc-input');
         incInput.addEventListener('input', (e) => {
             let val = parseFloat(e.target.value);
             if (!isNaN(val)) {
                 i_deg = Math.min(90, Math.max(0, val));
                 orbitGroup.rotation.x = THREE.MathUtils.degToRad(i_deg);
-                drawLightCurve(phase); 
+                updatePositions(phase); 
             }
         });
 
@@ -343,8 +356,22 @@
             i_deg = Math.min(90, Math.max(0, i_deg));
             incInput.value = i_deg.toFixed(3);
             orbitGroup.rotation.x = THREE.MathUtils.degToRad(i_deg);
-            drawLightCurve(phase);
+            updatePositions(phase);
         }, { passive: false });
+
+        // 潮汐锁定按钮逻辑
+        const tidalBtn = document.getElementById('tidal-btn');
+        tidalBtn.addEventListener('click', () => {
+            isTidallyLocked = !isTidallyLocked;
+            if (isTidallyLocked) {
+                tidalBtn.innerText = "Tidal: Locked";
+                tidalBtn.classList.remove('unlocked');
+            } else {
+                tidalBtn.innerText = "Tidal: Unlocked";
+                tidalBtn.classList.add('unlocked');
+            }
+            updatePositions(phase);
+        });
 
         // --- 4. 2D Data Views ---
         const eclipseCanvas = document.getElementById('eclipse-canvas');
@@ -373,14 +400,12 @@
         window.addEventListener('resize', resize2DCanvases);
         resize2DCanvases();
 
-        // 核心物理函数：返回 g, r, i 三个波段的通量
+        // 核心物理函数：计算光变
         function calcFlux(phase) {
             const p_rad = phase * 2 * Math.PI;
-            
             const cosI = Math.cos(THREE.MathUtils.degToRad(i_deg));
             const sinI = Math.sin(THREE.MathUtils.degToRad(i_deg));
             
-            // 坐标转换：0.0 为深食（伴星在前），0.5 为次食（主星在前）
             const x1 = Math.sin(p_rad) * dist1;
             const y1 = -Math.cos(p_rad) * dist1 * cosI;
             const z1 = -Math.cos(p_rad) * dist1 * sinI; 
@@ -408,12 +433,14 @@
                 if (z2 > z1) isDeepEclipse = true;
             }
 
+            // 潮汐锁定才会产生完美的波浪
+            // 如果不锁定，假设高光斑乱跑，为了演示极端情况，我们假设反射波完全消失，或者变得极度不规则。
+            // 这里演示反射波消失，只剩下几何掩食。
             let flux = {};
             for (let band of ['g', 'r', 'i']) {
-                // 修正基线：让深食发生的地方成为最低的波谷 (-cos)
-                let base = 1.0 - Math.cos(p_rad) * reflAmp[band];
-                let eclipse = 0;
+                let reflectionWave = isTidallyLocked ? (1.0 - Math.cos(p_rad) * reflAmp[band]) : 1.0; 
                 
+                let eclipse = 0;
                 if (overlapRatio > 0) {
                     if (isDeepEclipse) {
                         eclipse = deepDepth[band] * overlapRatio;
@@ -421,11 +448,12 @@
                         eclipse = 0.005 * overlapRatio;
                     }
                 }
-                flux[band] = base - eclipse;
+                flux[band] = reflectionWave - eclipse;
             }
             return flux;
         }
 
+        // 绘制 2D 视图
         function draw2DView(phase) {
             const p_rad = phase * 2 * Math.PI;
             const w = eclipseCanvas.clientWidth, h = eclipseCanvas.clientHeight;
@@ -466,11 +494,21 @@
                     baseGrad.addColorStop(0, '#330000'); baseGrad.addColorStop(1, '#110000'); 
                     eclCtx.beginPath(); eclCtx.arc(px2, py2, r2_px, 0, Math.PI * 2); eclCtx.fillStyle = baseGrad; eclCtx.fill();
 
+                    // 光照逻辑：锁定 vs 不锁定
+                    let lightX, lightY;
+                    if (isTidallyLocked) {
+                        // 锁定：高光永远指向主星
+                        lightX = px1; lightY = py1;
+                    } else {
+                        // 不锁定（假设不自转）：高光永远指向宇宙的同一方向（例如永远在屏幕右侧）
+                        lightX = px2 + r2_px * 10; lightY = py2;
+                    }
+
                     const dz = z1 - z2; 
                     let fadeFactor = Math.min(1, Math.max(0, (dz + r2_px * 1.5) / (2.8 * r2_px)));
                     
                     if (fadeFactor > 0) {
-                        let dx = px1 - px2, dy = py1 - py2, dist = Math.hypot(dx, dy);
+                        let dx = lightX - px2, dy = lightY - py2, dist = Math.hypot(dx, dy);
                         if (dist === 0) dist = 0.001;
                         let ox = px2 + (dx / dist) * r2_px * 0.8;
                         let oy = py2 + (dy / dist) * r2_px * 0.8;
@@ -580,20 +618,20 @@
             
             // 物理文字解说
             let singlePhase = (p_cur % 1 + 1) % 1;
-            if (singlePhase < 0.05 || singlePhase > 0.95) {
-                physicsLabel.innerText = "Primary Eclipse (0.0): Deepest minimum. The red dwarf completely blocks the bright blue star.";
+            if (!isTidallyLocked) {
+                physicsLabel.innerText = "Unlocked: The heated face does not follow the primary. The 0.509d reflection wave vanishes or gets distorted.";
+                physicsLabel.style.borderColor = "#cc4400";
+            } else if (singlePhase < 0.05 || singlePhase > 0.95) {
+                physicsLabel.innerText = "Primary Eclipse (0.0): Deepest minimum. Red dwarf blocks the bright blue star.";
                 physicsLabel.style.borderColor = "#33ff33";
             } else if (singlePhase > 0.45 && singlePhase < 0.55) {
-                physicsLabel.innerText = "Secondary Eclipse (0.5): Shallow dip. The blue star blocks a small part of the red dwarf.";
+                physicsLabel.innerText = "Secondary Eclipse (0.5): Shallow dip. Blue star blocks a tiny part of the red dwarf.";
                 physicsLabel.style.borderColor = "#88ddff";
             } else if (singlePhase > 0.22 && singlePhase < 0.28) {
-                physicsLabel.innerText = "Phase 0.25: Maximum separation. i-band shows a much larger reflection wave amplitude than g-band.";
-                physicsLabel.style.borderColor = "#aa77ff";
-            } else if (singlePhase > 0.72 && singlePhase < 0.78) {
-                physicsLabel.innerText = "Phase 0.75: Second maximum separation. i-band variation dominates.";
+                physicsLabel.innerText = "Phase 0.25: Maximum separation. The 0.509d reflection wave is perfectly maintained by tidal locking.";
                 physicsLabel.style.borderColor = "#aa77ff";
             } else {
-                physicsLabel.innerText = "System orbiting: g-band tracks the primary, while i-band reveals the irradiated secondary.";
+                physicsLabel.innerText = "System orbiting: g-band tracks the primary, i-band reveals the irradiated secondary.";
                 physicsLabel.style.borderColor = "#555";
             }
         }
@@ -647,7 +685,7 @@
 
         window.addEventListener('resize', resize2DCanvases);
 
-        // 初始化，从 -0.5 开始播放
+        // 初始化
         phase = -0.5;
         updatePositions(phase);
         animate();
