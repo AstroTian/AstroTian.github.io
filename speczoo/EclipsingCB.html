@@ -374,25 +374,25 @@
         resize2DCanvases();
 
         // 核心物理函数：返回 g, r, i 三个波段的通量
-        function calcFlux(p_rad) {
+        function calcFlux(phase) {
+            const p_rad = phase * 2 * Math.PI;
+            
             const cosI = Math.cos(THREE.MathUtils.degToRad(i_deg));
             const sinI = Math.sin(THREE.MathUtils.degToRad(i_deg));
             
-            const p_shifted = p_rad + Math.PI;
+            // 坐标转换：0.0 为深食（伴星在前），0.5 为次食（主星在前）
+            const x1 = Math.sin(p_rad) * dist1;
+            const y1 = -Math.cos(p_rad) * dist1 * cosI;
+            const z1 = -Math.cos(p_rad) * dist1 * sinI; 
 
-            const x1 = Math.sin(p_shifted) * dist1;
-            const y1 = -Math.cos(p_shifted) * dist1 * cosI;
-            const z1 = -Math.cos(p_shifted) * dist1 * sinI; 
-
-            const x2 = -Math.sin(p_shifted) * dist2;
-            const y2 = Math.cos(p_shifted) * dist2 * cosI;
-            const z2 = Math.cos(p_shifted) * dist2 * sinI;
+            const x2 = -Math.sin(p_rad) * dist2;
+            const y2 = Math.cos(p_rad) * dist2 * cosI;
+            const z2 = Math.cos(p_rad) * dist2 * sinI;
 
             const dx = x1 - x2;
             const dy = y1 - y2;
             const distCenter = Math.sqrt(dx*dx + dy*dy);
 
-            // 物理机制参数调整
             const reflAmp = { g: 0.025, r: 0.05, i: 0.08 };
             const deepDepth = { g: 0.9, r: 0.75, i: 0.55 };
 
@@ -410,7 +410,8 @@
 
             let flux = {};
             for (let band of ['g', 'r', 'i']) {
-                let base = 1.0 - Math.cos(p_shifted) * reflAmp[band];
+                // 修正基线：让深食发生的地方成为最低的波谷 (-cos)
+                let base = 1.0 - Math.cos(p_rad) * reflAmp[band];
                 let eclipse = 0;
                 
                 if (overlapRatio > 0) {
@@ -425,21 +426,20 @@
             return flux;
         }
 
-        function draw2DView(p_rad) {
+        function draw2DView(phase) {
+            const p_rad = phase * 2 * Math.PI;
             const w = eclipseCanvas.clientWidth, h = eclipseCanvas.clientHeight;
             const cx = w / 2, cy = h / 2;
             const cosI = Math.cos(THREE.MathUtils.degToRad(i_deg));
             const sinI = Math.sin(THREE.MathUtils.degToRad(i_deg));
             
-            const p_shifted = p_rad + Math.PI;
+            const x1 = Math.sin(p_rad) * dist1;
+            const y1 = -Math.cos(p_rad) * dist1 * cosI;
+            const z1 = -Math.cos(p_rad) * dist1 * sinI; 
 
-            const x1 = Math.sin(p_shifted) * dist1;
-            const y1 = -Math.cos(p_shifted) * dist1 * cosI;
-            const z1 = -Math.cos(p_shifted) * dist1 * sinI; 
-
-            const x2 = -Math.sin(p_shifted) * dist2;
-            const y2 = Math.cos(p_shifted) * dist2 * cosI;
-            const z2 = Math.cos(p_shifted) * dist2 * sinI;
+            const x2 = -Math.sin(p_rad) * dist2;
+            const y2 = Math.cos(p_rad) * dist2 * cosI;
+            const z2 = Math.cos(p_rad) * dist2 * sinI;
 
             const PX_SCALE = (w / 2.2) / (a_total * SCALE); 
             
@@ -498,16 +498,20 @@
             lcCtx.clearRect(0, 0, w, h);
             
             const paddingTop = h * 0.15;
-            const paddingBottom = h * 0.15; // 增加底部留白，为了让文字更清楚
+            const paddingBottom = h * 0.15; 
             const graphHeight = h - paddingTop - paddingBottom;
 
-            // 绘制网格
+            const x_min = -0.5, x_max = 1.5;
+
             lcCtx.strokeStyle = '#222'; lcCtx.lineWidth = 1; lcCtx.beginPath();
             for(let i=0; i<=4; i++) { let y = paddingTop + i * (graphHeight/4); lcCtx.moveTo(0, y); lcCtx.lineTo(w, y); }
-            for(let p=0; p<=2; p+=0.5) { let x = (p/2) * w; lcCtx.moveTo(x, paddingTop); lcCtx.lineTo(x, h - paddingBottom); }
+            for(let p=x_min; p<=x_max; p+=0.5) { 
+                let x = ((p - x_min) / (x_max - x_min)) * w; 
+                lcCtx.moveTo(x, paddingTop); 
+                lcCtx.lineTo(x, h - paddingBottom); 
+            }
             lcCtx.stroke();
 
-            // 绘制底轴实线
             lcCtx.beginPath();
             lcCtx.strokeStyle = '#555';
             lcCtx.lineWidth = 1.5;
@@ -515,28 +519,26 @@
             lcCtx.lineTo(w, h - paddingBottom);
             lcCtx.stroke();
 
-            // 绘制刻度文字（提亮并居中）
             lcCtx.fillStyle = '#ddd'; 
             lcCtx.font = '11px monospace';
             lcCtx.textAlign = 'center'; 
             
-            const ticks = [0.0, 0.5, 1.0, 1.5, 2.0];
+            const ticks = [-0.5, 0.0, 0.5, 1.0, 1.5];
             ticks.forEach(tick => {
-                let x = (tick / 2) * w;
-                // 防止边缘文字被切掉
-                if (tick === 0.0) x = 15;
-                if (tick === 2.0) x = w - 15;
+                let x = ((tick - x_min) / (x_max - x_min)) * w;
+                if (tick === x_min) x = 15;
+                if (tick === x_max) x = w - 15;
                 
                 lcCtx.fillText(tick.toFixed(1), x, h - 4);
                 
-                // 画底部刻度小短线
                 lcCtx.beginPath();
                 lcCtx.strokeStyle = '#555';
-                lcCtx.moveTo((tick / 2) * w, h - paddingBottom - 3);
-                lcCtx.lineTo((tick / 2) * w, h - paddingBottom + 3);
+                let lineX = ((tick - x_min) / (x_max - x_min)) * w;
+                lcCtx.moveTo(lineX, h - paddingBottom - 3);
+                lcCtx.lineTo(lineX, h - paddingBottom + 3);
                 lcCtx.stroke();
             });
-            lcCtx.textAlign = 'left'; // 恢复默认
+            lcCtx.textAlign = 'left'; 
             
             const bands = [
                 { key: 'g', color: '#33ff33' },
@@ -544,17 +546,16 @@
                 { key: 'i', color: '#aa77ff' }
             ];
 
-            // 画三条曲线
             bands.forEach(band => {
                 lcCtx.beginPath();
                 lcCtx.strokeStyle = band.color;
                 lcCtx.lineWidth = 1.5;
                 lcCtx.lineJoin = 'round';
-                for (let i = 0; i <= 400; i++) {
-                    let p = (i / 400) * 2;
-                    let fluxObj = calcFlux(p * Math.PI * 2); 
+                for (let i = 0; i <= 800; i++) {
+                    let p = x_min + (i / 800) * (x_max - x_min);
+                    let fluxObj = calcFlux(p); 
                     let flux = fluxObj[band.key];
-                    let x = (p / 2) * w;
+                    let x = (i / 800) * w;
                     let y = paddingTop + (1 - flux) * graphHeight; 
                     if (i === 0) lcCtx.moveTo(x, y); else lcCtx.lineTo(x, y);
                 }
@@ -562,9 +563,12 @@
             });
 
             // 游标
-            let p_cur = currentPhase / (Math.PI * 2); 
-            let currentFluxObj = calcFlux(currentPhase);
-            let cx = (p_cur / 2) * w;
+            let p_cur = currentPhase; 
+            if (p_cur < x_min) p_cur += 2;
+            if (p_cur > x_max) p_cur -= 2;
+
+            let currentFluxObj = calcFlux(p_cur);
+            let cx = ((p_cur - x_min) / (x_max - x_min)) * w;
             
             bands.forEach(band => {
                 let cy = paddingTop + (1 - currentFluxObj[band.key]) * graphHeight;
@@ -574,15 +578,19 @@
                 lcCtx.fill();
             });
             
+            // 物理文字解说
             let singlePhase = (p_cur % 1 + 1) % 1;
-            if (singlePhase > 0.48 && singlePhase < 0.52) {
-                physicsLabel.innerText = "Primary Eclipse (0.5): Deepest in g-band. Shallower in i-band due to the red dwarf's own luminosity.";
+            if (singlePhase < 0.05 || singlePhase > 0.95) {
+                physicsLabel.innerText = "Primary Eclipse (0.0): Deepest minimum. The red dwarf completely blocks the bright blue star.";
                 physicsLabel.style.borderColor = "#33ff33";
-            } else if (singlePhase < 0.02 || singlePhase > 0.98) {
-                physicsLabel.innerText = "Phase 0.0: Reflection peak. The heated face is visible, dominating the i-band variation.";
-                physicsLabel.style.borderColor = "#aa77ff";
+            } else if (singlePhase > 0.45 && singlePhase < 0.55) {
+                physicsLabel.innerText = "Secondary Eclipse (0.5): Shallow dip. The blue star blocks a small part of the red dwarf.";
+                physicsLabel.style.borderColor = "#88ddff";
             } else if (singlePhase > 0.22 && singlePhase < 0.28) {
                 physicsLabel.innerText = "Phase 0.25: Maximum separation. i-band shows a much larger reflection wave amplitude than g-band.";
+                physicsLabel.style.borderColor = "#aa77ff";
+            } else if (singlePhase > 0.72 && singlePhase < 0.78) {
+                physicsLabel.innerText = "Phase 0.75: Second maximum separation. i-band variation dominates.";
                 physicsLabel.style.borderColor = "#aa77ff";
             } else {
                 physicsLabel.innerText = "System orbiting: g-band tracks the primary, while i-band reveals the irradiated secondary.";
@@ -591,21 +599,22 @@
         }
 
         // --- 5. Animation Loop ---
-        let isPlaying = true, phase = 0; 
-        const speed = 0.02; 
+        let isPlaying = true, phase = 0.0; 
+        const speed = 0.0015; 
         const slider = document.getElementById('time-slider'), playBtn = document.getElementById('play-btn'), timeDisplay = document.getElementById('time-display');
 
         function updatePositions(p) {
-            const p_shifted = p + Math.PI;
-            
-            star1.position.set(Math.sin(p_shifted) * dist1, 0, -Math.cos(p_shifted) * dist1);
-            secondaryGroup.position.set(-Math.sin(p_shifted) * dist2, 0, Math.cos(p_shifted) * dist2);
+            const p_rad = p * 2 * Math.PI;
+            star1.position.set(Math.sin(p_rad) * dist1, 0, -Math.cos(p_rad) * dist1);
+            secondaryGroup.position.set(-Math.sin(p_rad) * dist2, 0, Math.cos(p_rad) * dist2);
 
-            if (isPlaying) slider.value = (p / (Math.PI * 4)) * 2000;
+            if (isPlaying) {
+                slider.value = ((p + 0.5) / 2) * 2000;
+            }
             
-            let normalizedPhase = (p / (Math.PI * 2)) % 1;
+            let normalizedPhase = (p % 1 + 1) % 1; 
             const currentDays = (normalizedPhase * P_days).toFixed(4);
-            timeDisplay.innerText = `Phase: ${normalizedPhase.toFixed(2)} (${currentDays} d)`;
+            timeDisplay.innerText = `Phase: ${p.toFixed(2)} (${currentDays} d)`;
 
             draw2DView(p);
             drawLightCurve(p);
@@ -621,7 +630,7 @@
             isPlaying = false;
             playBtn.innerText = 'Play';
             playBtn.classList.remove('playing');
-            phase = (e.target.value / 2000) * Math.PI * 4;
+            phase = (e.target.value / 2000) * 2 - 0.5;
             updatePositions(phase);
         });
 
@@ -629,7 +638,7 @@
             requestAnimationFrame(animate);
             if (isPlaying) {
                 phase += speed;
-                if (phase > Math.PI * 4) phase -= Math.PI * 4;
+                if (phase > 1.5) phase -= 2; 
                 updatePositions(phase);
             }
             controls.update();
@@ -638,7 +647,9 @@
 
         window.addEventListener('resize', resize2DCanvases);
 
-        updatePositions(0);
+        // 初始化，从 -0.5 开始播放
+        phase = -0.5;
+        updatePositions(phase);
         animate();
     </script>
 </body>
