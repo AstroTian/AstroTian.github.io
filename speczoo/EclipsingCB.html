@@ -120,9 +120,11 @@
         }
 
         .legend { font-size: 11px; font-weight: normal; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;}
-        .legend-item { display: flex; align-items: center; gap: 4px; }
+        .legend-item { display: flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; transition: opacity 0.2s;}
+        .legend-item.disabled { opacity: 0.3; }
         .legend-color { width: 12px; height: 2px; display: inline-block; }
         .legend-dashed { width: 12px; height: 0px; border-top: 2px dashed #aa77ff; display: inline-block; }
+        .legend-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
 
         #global-controls { 
             height: 90px; 
@@ -228,12 +230,13 @@
             </div>
             <div class="sub-panel">
                 <div class="panel-header">
-                    <span>Multi-band Light Curve</span>
+                    <span>Light Curve & ZTF Data</span>
                     <div class="legend">
-                        <div class="legend-item"><span class="legend-color" style="background:#33ff33;"></span>g</div>
-                        <div class="legend-item"><span class="legend-color" style="background:#ff3333;"></span>r</div>
-                        <div class="legend-item"><span class="legend-color" style="background:#aa77ff;"></span>i</div>
-                        <div class="legend-item"><span class="legend-dashed"></span>Ideal i-band Sinusoid</div>
+                        <div class="legend-item" id="legend-g"><span class="legend-color" style="background:#33ff33;"></span>-g</div>
+                        <div class="legend-item" id="legend-r"><span class="legend-color" style="background:#ff3333;"></span>-r</div>
+                        <div class="legend-item" id="legend-i"><span class="legend-color" style="background:#aa77ff;"></span>-i (Model)</div>
+                        <div class="legend-item" id="legend-ztf"><span class="legend-dot" style="background:#ddaaff;"></span>ZTF Data (i)</div>
+                        <div class="legend-item" id="legend-fit"><span class="legend-dashed"></span>Best Fit Sine</div>
                     </div>
                 </div>
                 <div class="canvas-wrapper"><canvas id="lc-canvas" class="sub-canvas"></canvas></div>
@@ -266,6 +269,29 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script>
+        // --- 0. ZTF Data & Fit Parameters ---
+        const ztfRawData = [
+            [0.010, 18.74], [0.020, 17.82], [0.038, 17.90], [0.051, 17.84], [0.089, 17.81], [0.116, 17.74], 
+            [0.124, 17.83], [0.143, 17.79], [0.163, 17.78], [0.193, 17.81], [0.205, 17.74], [0.221, 17.81], 
+            [0.238, 17.75], [0.251, 17.78], [0.263, 17.66], [0.299, 17.68], [0.304, 17.60], [0.321, 17.66], 
+            [0.336, 17.61], [0.353, 17.59], [0.373, 17.57], [0.383, 17.69], [0.423, 17.50], [0.433, 17.47], 
+            [0.446, 17.55], [0.462, 17.49], [0.475, 17.59], [0.485, 17.49], [0.500, 17.49], [0.513, 17.53], 
+            [0.546, 17.55], [0.569, 17.50], [0.578, 17.58], [0.592, 17.56], [0.630, 17.58], [0.686, 17.53], 
+            [0.697, 17.66], [0.708, 17.72], [0.717, 17.76], [0.731, 17.68], [0.740, 17.72], [0.753, 17.72], 
+            [0.757, 17.80], [0.766, 17.70], [0.778, 17.83], [0.794, 17.86], [0.802, 17.78], [0.811, 17.76], 
+            [0.820, 17.82], [0.831, 17.79], [0.839, 17.73], [0.853, 17.81], [0.860, 17.87], [0.871, 17.87], 
+            [0.879, 17.91], [0.903, 17.93], [0.908, 17.93], [0.930, 17.95], [0.945, 17.89], [0.955, 17.83], 
+            [0.960, 17.91], [0.978, 17.94], [0.982, 17.91]
+        ];
+        const ztfData = [];
+        ztfRawData.forEach(pt => {
+            let ph = pt[0], mag = pt[1];
+            ztfData.push([ph, mag]);
+            ztfData.push([ph + 1.0, mag]);
+        });
+        const C_fit = 17.74;
+        const A_fit = 0.20;
+
         // --- 1. Physics Parameters ---
         const P_days = 0.50909;
         let i_deg = 82.585; 
@@ -277,9 +303,15 @@
         const radius1 = R1 * SCALE, radius2 = R2 * SCALE, radiusL2 = RL2 * SCALE; 
         const dist1 = a_total * (M2 / (M1 + M2)) * SCALE, dist2 = a_total * (M1 / (M1 + M2)) * SCALE;
 
-        // 状态变量
         let isTidallyLocked = true;
-        let thermalLag = 0; // 0 到 1 之间
+        let thermalLag = 0; 
+        let vis = { g: true, r: true, i: true, ztf: true, fit: true };
+
+        // 光变曲线视图（用于缩放）
+        const fullView = {x0: -0.5, x1: 1.5, y0: 17.2, y1: 20.2};
+        let view = {...fullView};
+        // 拖拽选框状态
+        let drag = {active:false, sx:0, sy:0, ex:0, ey:0};
 
         // --- 2. 3D Scene Setup ---
         const container = document.getElementById('canvas-container');
@@ -390,6 +422,17 @@
             updatePositions(phase);
         });
 
+        // 图例点击交互
+        ['g', 'r', 'i', 'ztf', 'fit'].forEach(key => {
+            let el = document.getElementById(`legend-${key}`);
+            el.addEventListener('click', () => {
+                vis[key] = !vis[key];
+                if (vis[key]) el.classList.remove('disabled');
+                else el.classList.add('disabled');
+                drawLightCurve(phase);
+            });
+        });
+
         // --- 4. 2D Data Views ---
         const eclipseCanvas = document.getElementById('eclipse-canvas');
         const eclCtx = eclipseCanvas.getContext('2d');
@@ -412,12 +455,81 @@
             const lw = lcCanvas.parentElement.clientWidth, lh = lcCanvas.parentElement.clientHeight;
             lcCanvas.width = lw * dpr; lcCanvas.height = lh * dpr; 
             lcCanvas.style.width = lw + 'px'; lcCanvas.style.height = lh + 'px'; 
-            lcCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            lcCtx.setTransform(dpr, 0, 0, 0, 0, 0);
         }
         window.addEventListener('resize', resize2DCanvases);
         resize2DCanvases();
 
-        // 核心物理函数：计算光变
+        // 坐标转换：画布像素 <-> 相位/星等
+        function pxToPhase(px, w, padTop, padBot) {
+            const graphW = w;
+            return view.x0 + (px / graphW) * (view.x1 - view.x0);
+        }
+        function phaseToPx(ph, w) {
+            const graphW = w;
+            return ((ph - view.x0) / (view.x1 - view.x0)) * graphW;
+        }
+        function magToPx(mag, h, padTop, padBot) {
+            const graphH = h - padTop - padBot;
+            return padTop + ((mag - view.y0) / (view.y1 - view.y0)) * graphH;
+        }
+        function pxToMag(py, h, padTop, padBot) {
+            const graphH = h - padTop - padBot;
+            return view.y0 + ((py - padTop) / graphH) * (view.y1 - view.y0);
+        }
+
+        // 光变曲线拖拽缩放事件
+        lcCanvas.addEventListener('mousedown', (e)=>{
+            const rect = lcCanvas.getBoundingClientRect();
+            drag.active = true;
+            drag.sx = e.clientX - rect.left;
+            drag.sy = e.clientY - rect.top;
+            drag.ex = drag.sx;
+            drag.ey = drag.sy;
+        });
+        lcCanvas.addEventListener('mousemove', (e)=>{
+            if(!drag.active) return;
+            const rect = lcCanvas.getBoundingClientRect();
+            drag.ex = e.clientX - rect.left;
+            drag.ey = e.clientY - rect.top;
+            drawLightCurve(phase);
+        });
+        lcCanvas.addEventListener('mouseup', (e)=>{
+            if(!drag.active) return;
+            drag.active = false;
+            const rect = lcCanvas.getBoundingClientRect();
+            const w = lcCanvas.clientWidth;
+            const h = lcCanvas.clientHeight;
+            const paddingTop = h * 0.15;
+            const paddingBottom = h * 0.15;
+            const x1 = Math.min(drag.sx, drag.ex);
+            const x2 = Math.max(drag.sx, drag.ex);
+            const y1 = Math.min(drag.sy, drag.ey);
+            const y2 = Math.max(drag.sy, drag.ey);
+            const minBox = 12;
+            if((x2-x1) > minBox && (y2-y1) > minBox){
+                const ph0 = pxToPhase(x1, w, paddingTop, paddingBottom);
+                const ph1 = pxToPhase(x2, w, paddingTop, paddingBottom);
+                const mag0 = pxToMag(y1, h, paddingTop, paddingBottom);
+                const mag1 = pxToMag(y2, h, paddingTop, paddingBottom);
+                view = {
+                    x0: Math.max(fullView.x0, Math.min(ph0, ph1)),
+                    x1: Math.min(fullView.x1, Math.max(ph0, ph1)),
+                    y0: Math.max(fullView.y0, Math.min(mag0, mag1)),
+                    y1: Math.min(fullView.y1, Math.max(mag0, mag1))
+                };
+            }
+            drawLightCurve(phase);
+        });
+        lcCanvas.addEventListener('mouseleave', ()=>{
+            drag.active = false;
+        });
+        lcCanvas.addEventListener('dblclick', ()=>{
+            view = {...fullView};
+            drawLightCurve(phase);
+        });
+
+        // 核心物理函数：计算光变，相位0为主掩食最深
         function calcFlux(phase) {
             const p_rad = phase * 2 * Math.PI;
             const cosI = Math.cos(THREE.MathUtils.degToRad(i_deg));
@@ -452,20 +564,7 @@
 
             let flux = {};
             for (let band of ['g', 'r', 'i']) {
-                let reflectionWave = 1.0;
-                
-                if (isTidallyLocked) {
-                    // 锁定状态：热滞后导致振幅衰减和相位滞后
-                    let amplitudeFactor = 1.0 - thermalLag * 0.8;
-                    let phaseShift = thermalLag * 1.5; 
-                    reflectionWave = 1.0 - Math.cos(p_rad - phaseShift) * reflAmp[band] * amplitudeFactor; 
-                } else {
-                    // 不锁定状态：自转抹平效应 + 热滞后放大效应
-                    let amplitudeFactor = 0.4 * (1.0 - thermalLag * 0.8);
-                    let phaseShift = 0.8 + thermalLag * 1.5; 
-                    reflectionWave = 1.0 - Math.cos(p_rad - phaseShift) * reflAmp[band] * amplitudeFactor; 
-                }
-                
+                let reflectionWave = 1.0 - Math.cos(p_rad - (isTidallyLocked ? thermalLag * 1.5 : 0.8)) * reflAmp[band]; 
                 let eclipse = 0;
                 if (overlapRatio > 0) {
                     if (isDeepEclipse) {
@@ -479,7 +578,7 @@
             return flux;
         }
 
-        // 绘制 2D 视图
+        // 绘制 2D 视图 (3D 旋转同步)
         function draw2DView(phase) {
             const p_rad = phase * 2 * Math.PI;
             const w = eclipseCanvas.clientWidth, h = eclipseCanvas.clientHeight;
@@ -578,15 +677,16 @@
             const paddingBottom = h * 0.15; 
             const graphHeight = h - paddingTop - paddingBottom;
 
-            const x_min = -0.5, x_max = 1.5;
-
+            // 网格
             lcCtx.strokeStyle = '#222'; lcCtx.lineWidth = 1; lcCtx.beginPath();
             for(let i=0; i<=4; i++) { let y = paddingTop + i * (graphHeight/4); lcCtx.moveTo(0, y); lcCtx.lineTo(w, y); }
-            for(let p=x_min; p<=x_max; p+=0.5) { 
-                let x = ((p - x_min) / (x_max - x_min)) * w; 
-                lcCtx.moveTo(x, paddingTop); 
-                lcCtx.lineTo(x, h - paddingBottom); 
-            }
+            const tickPhases = [-0.5,0,0.5,1.0,1.5];
+            tickPhases.forEach(p=>{
+                if(p >= view.x0 && p <= view.x1){
+                    let x = phaseToPx(p,w);
+                    lcCtx.moveTo(x, paddingTop); lcCtx.lineTo(x, h - paddingBottom);
+                }
+            });
             lcCtx.stroke();
 
             lcCtx.beginPath();
@@ -599,40 +699,18 @@
             lcCtx.fillStyle = '#ddd'; 
             lcCtx.font = '11px monospace';
             lcCtx.textAlign = 'center'; 
-            
-            const ticks = [-0.5, 0.0, 0.5, 1.0, 1.5];
-            ticks.forEach(tick => {
-                let x = ((tick - x_min) / (x_max - x_min)) * w;
-                if (tick === x_min) x = 15;
-                if (tick === x_max) x = w - 15;
-                
-                lcCtx.fillText(tick.toFixed(1), x, h - 4);
-                
-                lcCtx.beginPath();
-                lcCtx.strokeStyle = '#555';
-                let lineX = ((tick - x_min) / (x_max - x_min)) * w;
-                lcCtx.moveTo(lineX, h - paddingBottom - 3);
-                lcCtx.lineTo(lineX, h - paddingBottom + 3);
-                lcCtx.stroke();
+            tickPhases.forEach(tick => {
+                if(tick >= view.x0 && tick <= view.x1){
+                    let x = phaseToPx(tick, w);
+                    lcCtx.fillText(tick.toFixed(1), x, h - 4);
+                    lcCtx.beginPath();
+                    lcCtx.strokeStyle = '#555';
+                    lcCtx.moveTo(x, h - paddingBottom - 3);
+                    lcCtx.lineTo(x, h - paddingBottom + 3);
+                    lcCtx.stroke();
+                }
             });
             lcCtx.textAlign = 'left'; 
-
-            // 新增：绘制理想 i-band 正弦基准线（虚线，不受掩食和热滞后影响）
-            lcCtx.beginPath();
-            lcCtx.strokeStyle = 'rgba(170, 119, 255, 0.6)'; // 淡紫色虚线
-            lcCtx.setLineDash([5, 5]);
-            lcCtx.lineWidth = 1.5;
-            for (let i = 0; i <= 800; i++) {
-                let p = x_min + (i / 800) * (x_max - x_min);
-                let p_rad = p * 2 * Math.PI;
-                // 理想状态下无遮挡、无滞后的 i-band 反射波
-                let idealFlux = 1.0 - Math.cos(p_rad) * 0.08;
-                let x = (i / 800) * w;
-                let y = paddingTop + (1 - idealFlux) * graphHeight; 
-                if (i === 0) lcCtx.moveTo(x, y); else lcCtx.lineTo(x, y);
-            }
-            lcCtx.stroke();
-            lcCtx.setLineDash([]); // 恢复实线
 
             const bands = [
                 { key: 'g', color: '#33ff33' },
@@ -640,54 +718,103 @@
                 { key: 'i', color: '#aa77ff' }
             ];
 
+            // 理论模型曲线
             bands.forEach(band => {
+                if (!vis[band.key]) return;
                 lcCtx.beginPath();
                 lcCtx.strokeStyle = band.color;
                 lcCtx.lineWidth = 1.5;
                 lcCtx.lineJoin = 'round';
                 for (let i = 0; i <= 800; i++) {
-                    let p = x_min + (i / 800) * (x_max - x_min);
+                    let p = view.x0 + (i / 800) * (view.x1 - view.x0);
                     let fluxObj = calcFlux(p); 
                     let flux = fluxObj[band.key];
+                    let model_mag = C_fit - (flux - 1.0) * 2.5;
+                    let y = magToPx(model_mag, h, paddingTop, paddingBottom);
                     let x = (i / 800) * w;
-                    let y = paddingTop + (1 - flux) * graphHeight; 
                     if (i === 0) lcCtx.moveTo(x, y); else lcCtx.lineTo(x, y);
                 }
                 lcCtx.stroke();
             });
 
+            // ZTF 数据 + 拟合线
+            if (vis.ztf || vis.fit) {
+                if (vis.ztf) {
+                    lcCtx.fillStyle = 'rgba(221, 170, 255, 0.8)';
+                    ztfData.forEach(pt => {
+                        let ph = pt[0], mag = pt[1];
+                        if (ph >= view.x0 && ph <= view.x1) {
+                            let x = phaseToPx(ph, w);
+                            let y = magToPx(mag, h, paddingTop, paddingBottom);
+                            lcCtx.beginPath();
+                            lcCtx.arc(x, y, 2, 0, Math.PI * 2);
+                            lcCtx.fill();
+                        }
+                    });
+                }
+                if (vis.fit) {
+                    lcCtx.beginPath();
+                    lcCtx.strokeStyle = 'rgba(221, 170, 255, 0.8)';
+                    lcCtx.setLineDash([4, 4]);
+                    lcCtx.lineWidth = 1.5;
+                    for (let i = 0; i <= 800; i++) {
+                        let ph = view.x0 + (i / 800) * (view.x1 - view.x0);
+                        let mag_fit = C_fit - A_fit * Math.cos(2 * Math.PI * ph);
+                        let x = (i / 800) * w;
+                        let y = magToPx(mag_fit, h, paddingTop, paddingBottom);
+                        if (i === 0) lcCtx.moveTo(x, y); else lcCtx.lineTo(x, y);
+                    }
+                    lcCtx.stroke();
+                    lcCtx.setLineDash([]);
+                }
+            }
+
             // 游标
             let p_cur = currentPhase; 
-            if (p_cur < x_min) p_cur += 2;
-            if (p_cur > x_max) p_cur -= 2;
+            if (p_cur < view.x0) p_cur += 2;
+            if (p_cur > view.x1) p_cur -= 2;
 
             let currentFluxObj = calcFlux(p_cur);
-            let cx = ((p_cur - x_min) / (x_max - x_min)) * w;
+            let cx = phaseToPx(p_cur, w);
             
             bands.forEach(band => {
-                let cy = paddingTop + (1 - currentFluxObj[band.key]) * graphHeight;
+                if (!vis[band.key]) return;
+                let model_mag = C_fit - (currentFluxObj[band.key] - 1.0) * 2.5;
+                let cy = magToPx(model_mag, h, paddingTop, paddingBottom);
                 lcCtx.beginPath();
                 lcCtx.fillStyle = band.color;
                 lcCtx.arc(cx, cy, 3.5, 0, Math.PI * 2);
                 lcCtx.fill();
             });
+
+            // 拖拽预览框
+            if(drag.active){
+                lcCtx.save();
+                lcCtx.fillStyle = 'rgba(255,255,255,0.08)';
+                lcCtx.strokeStyle = 'rgba(255,255,255,0.6)';
+                lcCtx.lineWidth = 1;
+                const x = Math.min(drag.sx, drag.ex);
+                const y = Math.min(drag.sy, drag.ey);
+                const wBox = Math.abs(drag.ex - drag.sx);
+                const hBox = Math.abs(drag.ey - drag.sy);
+                lcCtx.fillRect(x,y,wBox,hBox);
+                lcCtx.strokeRect(x,y,wBox,hBox);
+                lcCtx.restore();
+            }
             
             // 物理文字解说
-            let singlePhase = (p_cur % 1 + 1) % 1;
+            let singlePhase = (currentPhase % 1 + 1) % 1;
             if (!isTidallyLocked) {
-                physicsLabel.innerText = "Unlocked: The actual i-band (solid purple) deviates from the ideal sinusoid (dashed) due to rotation smearing.";
+                physicsLabel.innerText = "Unlocked: The actual i-band deviates from the ideal sinusoid due to rotation smearing.";
                 physicsLabel.style.borderColor = "#cc4400";
-            } else if (thermalLag > 0.3) {
-                physicsLabel.innerText = "High Thermal Lag: The actual i-band (solid purple) deviates from the ideal sinusoid (dashed) by losing amplitude and shifting phase.";
-                physicsLabel.style.borderColor = "#ffaa00";
             } else if (singlePhase < 0.05 || singlePhase > 0.95) {
                 physicsLabel.innerText = "Primary Eclipse (0.0): Deepest minimum. Red dwarf blocks the bright blue star.";
                 physicsLabel.style.borderColor = "#33ff33";
             } else if (singlePhase > 0.45 && singlePhase < 0.55) {
-                physicsLabel.innerText = "Secondary Eclipse (0.5): Shallow dip. Blue star blocks a tiny part of the red dwarf.";
+                physicsLabel.innerText = "Secondary Eclipse (0.5): Shallow dip. The heated face is aligned with Earth, reaching maximum brightness.";
                 physicsLabel.style.borderColor = "#88ddff";
             } else {
-                physicsLabel.innerText = "System orbiting: the actual i-band follows the ideal sinusoid perfectly outside of eclipses.";
+                physicsLabel.innerText = "System orbiting: brightness modulated by reflection effect.";
                 physicsLabel.style.borderColor = "#555";
             }
         }
@@ -742,7 +869,6 @@
         window.addEventListener('resize', resize2DCanvases);
 
         // 初始化
-        phase = -0.5;
         updatePositions(phase);
         animate();
     </script>
